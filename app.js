@@ -981,5 +981,15 @@ if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
 else render();
 snapshotReached();
 navigator.storage?.persist?.().catch(() => {});
-if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  // a new version took over: reload once so the screen shows it right away
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+    .then(reg => { reg.update(); document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update(); }); })
+    .catch(() => {});
+}
 })();
