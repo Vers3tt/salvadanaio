@@ -1,6 +1,6 @@
 // Offline cache. Our own files: always revalidated with the server (no stale 10-minute HTTP cache),
 // cached copy used only when offline. Supabase API calls are never cached.
-const VERSION = "salvadanaio-v15";
+const VERSION = "salvadanaio-v16";
 const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/apple-touch-icon.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"];

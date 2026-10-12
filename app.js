@@ -604,6 +604,8 @@ function moreScreen() {
     : `<div class="cell"><span>Dati salvati</span><span>Solo su questo dispositivo</span></div>
       <button class="cell btn" data-more="setup"><span>Accedi per salvare i dati online</span></button>`}
   </div>
+  ${cloud ? `<div class="group-h"><span>Veloce</span></div>
+  <div class="list"><button class="cell btn" data-more="siri"><span>Siri, widget e Comandi Rapidi</span><span>${ic("chevR", 16)}</span></button></div>` : ""}
   <div class="group-h"><span>Pianificazione</span></div>
   <div class="list">
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
@@ -1237,6 +1239,59 @@ function deleteAccountSheet() {
   });
 }
 
+/* ============ Siri, widget e Comandi Rapidi ============ */
+const SHORTCUTS = [["Uscita Salvadanaio", "Chiede importo e categoria e segna una spesa", "minus"],
+                   ["Entrata Salvadanaio", "Chiede importo e categoria e segna un'entrata", "plus"],
+                   ["Saldo Salvadanaio", "Ti dice il saldo e il riepilogo del mese", "receipt"]];
+async function sha256hex(t) {
+  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function siriSheet() {
+  sheet(`<div class="sheet-h"><span></span><h3>Siri e widget</h3><button class="r" data-x>Fine</button></div>
+    <p class="hint" style="margin:0 4px 14px">Segna entrate e uscite senza aprire l'app: con Siri ("Ehi Siri, Uscita Salvadanaio"), da un widget nella schermata Home o dal Centro Notifiche del Mac.</p>
+
+    <div class="group-h" style="margin-top:4px"><span>1 · Il tuo codice personale</span></div>
+    <div class="card qcode" id="qBox">
+      <p>I comandi usano questo codice al posto di email e password. Tienilo per te: chi lo ha può segnare movimenti e leggere il saldo.</p>
+      <button class="save" id="qGen">Genera il codice</button>
+    </div>
+
+    <div class="group-h"><span>2 · Aggiungi i comandi</span></div>
+    <div class="list">${SHORTCUTS.map(([n, d, i]) => `<a class="row" href="comandi/${encodeURIComponent(n)}.shortcut" target="_blank" rel="noopener">
+      <span class="ico">${ic(i, 20)}</span><span class="t"><b>${esc(n)}</b><small>${esc(d)}</small></span><span class="a" style="color:var(--ink2)">${ic("external", 18)}</span></a>`).join("")}</div>
+    <p class="hint">Apri il link da iPhone o Mac: si apre Comandi Rapidi, tocca <b>Aggiungi comando</b> e incolla il codice quando te lo chiede.</p>
+
+    <div class="group-h"><span>3 · Usali</span></div>
+    <div class="card howto">
+      <p><b>Siri:</b> "Ehi Siri, Uscita Salvadanaio", poi rispondi con l'importo e la categoria.</p>
+      <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>, e scegli i comandi di Salvadanaio.</p>
+      <p><b>Mac:</b> i comandi arrivano anche sul Mac con iCloud. Aggiungili al widget Comandi Rapidi nel Centro Notifiche, o fissali nella barra dei menu da Comandi Rapidi → Impostazioni.</p>
+      <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Salvadanaio.</p>
+    </div>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    $("#qGen").onclick = async () => {
+      $("#qGen").disabled = true;
+      const bytes = crypto.getRandomValues(new Uint8Array(24));
+      const token = "sd_" + btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const { error } = await sb.from("quick_tokens").upsert({ token_hash: await sha256hex(token) }, { onConflict: "user_id" });
+      if (error) {
+        $("#qGen").disabled = false;
+        $("#qBox").insertAdjacentHTML("beforeend", `<p class="hint" style="color:var(--neg)">${missingTable(error) ? "Prima esegui su Supabase l'aggiornamento SQL per Siri (aggiornamento-3.sql)." : esc(error.message)}</p>`);
+        return;
+      }
+      $("#qBox").innerHTML = `<p>Ecco il tuo codice. <b>Copialo adesso</b>: per sicurezza non lo salvo e non potrò mostrartelo di nuovo. Se lo perdi, generane uno nuovo.</p>
+        <div class="qtoken num" id="qTok">${esc(token)}</div>
+        <div class="btnrow"><button class="save" id="qCopy">Copia codice</button><button class="save ghost" id="qNew">Genera di nuovo</button></div>
+        <p class="hint">Generandone uno nuovo, quello vecchio smette di funzionare: andrà incollato di nuovo nei comandi.</p>`;
+      $("#qCopy").onclick = async () => {
+        try { await navigator.clipboard.writeText(token); toast("Codice copiato"); }
+        catch { const r = document.createRange(); r.selectNodeContents($("#qTok")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selezionato: copialo con Copia"); }
+      };
+      $("#qNew").onclick = () => { close(); siriSheet(); setTimeout(() => $("#qGen")?.click(), 350); };
+    };
+  });
+}
+
 /* ============ events ============ */
 document.addEventListener("click", e => {
   const ob = e.target.closest("[data-ob]"); if (ob) { onboardingAction(ob.dataset.ob); return; }
@@ -1264,6 +1319,7 @@ document.addEventListener("click", e => {
     else if (a === "recurring") recurringSheet();
     else if (a === "password") passwordSheet(false);
     else if (a === "delete") deleteAccountSheet();
+    else if (a === "siri") siriSheet();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });
@@ -1307,6 +1363,13 @@ let splashOn = !!document.getElementById("splash"), authHeld = false;
 /* ============ boot ============ */
 if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
 else { render(); runRecurring(); }
+(function quickFromUrl() {
+  const p = new URLSearchParams(location.search), n = p.get("new");
+  if (n !== "out" && n !== "in") return;
+  history.replaceState(null, "", location.pathname);
+  const open = () => { if (S.mode && (S.mode === "local" || session) && !needsOnboarding()) txSheet(n); else setTimeout(open, 400); };
+  setTimeout(open, splashOn ? 1900 : 300);
+})();
 snapshotReached();
 navigator.storage?.persist?.().catch(() => {});
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
