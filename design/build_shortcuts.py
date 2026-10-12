@@ -1,6 +1,8 @@
 """Genera i Comandi Rapidi di Salvadanaio (Uscita, Entrata, Saldo) e li firma con `shortcuts sign`.
-Uso: python3 design/build_shortcuts.py   -> scrive comandi/*.shortcut"""
+Uso: python3 design/build_shortcuts.py                      -> comandi/*.shortcut (chiedono il codice all'import)
+     SD_TOKEN=sd_... SD_OUT=/cartella python3 design/...     -> comandi personali con il codice già dentro"""
 import plistlib, uuid, subprocess, os, re, tempfile
+TOKEN = os.environ.get("SD_TOKEN", "")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 cfg = open(os.path.join(ROOT, "config.js")).read()
@@ -22,7 +24,7 @@ def dict_items(pairs):  # [(key, value-field)] -> WFDictionaryFieldValue
 def act(ident, params): return {"WFWorkflowActionIdentifier": ident, "WFWorkflowActionParameters": params}
 
 def token_action(tid):
-    return act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": ""})
+    return act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": text(TOKEN) if TOKEN else ""})
 
 def request(rid, fn, body):
     return act("is.workflow.actions.downloadurl", {
@@ -58,7 +60,7 @@ def workflow(actions, glyph, color):
     return {
         "WFWorkflowClientVersion": "2605.0.5", "WFWorkflowMinimumClientVersion": 900, "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": color, "WFWorkflowIconGlyphNumber": glyph},
-        "WFWorkflowImportQuestions": [{"ActionIndex": 0, "Category": "Parameter", "DefaultValue": "", "ParameterKey": "WFTextActionText",
+        "WFWorkflowImportQuestions": [] if TOKEN else [{"ActionIndex": 0, "Category": "Parameter", "DefaultValue": "", "ParameterKey": "WFTextActionText",
             "Text": "Incolla il tuo codice personale: lo trovi nell'app Salvadanaio in Altro → Siri e widget."}],
         "WFWorkflowTypes": ["NCWidget", "WatchKit"], "WFWorkflowInputContentItemClasses": [],
         "WFWorkflowHasShortcutInputVariables": False, "WFWorkflowHasOutputFallback": False,
@@ -69,7 +71,7 @@ def workflow(actions, glyph, color):
 SPECS = [("Uscita Salvadanaio", movement("out"), 59511, 463140863),
          ("Entrata Salvadanaio", movement("in"), 59511, 431817727),
          ("Saldo Salvadanaio", balance(), 59446, 4282601983)]
-out = os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
+out = os.environ.get("SD_OUT") or os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
 for name, actions, glyph, color in SPECS:
     with tempfile.NamedTemporaryFile(suffix=".shortcut", delete=False) as f:
         plistlib.dump(workflow(actions, glyph, color), f, fmt=plistlib.FMT_BINARY); raw = f.name
