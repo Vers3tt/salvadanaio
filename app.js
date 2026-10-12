@@ -260,7 +260,7 @@ function homeScreen() {
   const ready = D.active.filter(g => g.price <= D.total).length;
   const months = monthStats();
   return `
-  <header class="nav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div></header>
+  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div><span class="nav-logo">${logoSvg(46)}</span></header>
   <div id="syncBadge"></div>
   <section class="card balance">
     <div class="bal-top"><span class="lbl">Saldo</span>
@@ -508,6 +508,7 @@ function moreScreen() {
     <div class="cell"><span>Obiettivi attivi</span><span class="num">${D.active.length}</span></div>
     <div class="cell"><span>Obiettivi comprati</span><span class="num">${D.done.length}</span></div>
   </div>
+  <div class="about">${logoSvg(56)}<b>Salvadanaio</b><span>I tuoi risparmi, sempre con te</span></div>
   <input type="file" id="importIn" accept="application/json,.json" hidden>`;
 }
 
