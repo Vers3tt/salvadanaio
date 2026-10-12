@@ -12,6 +12,7 @@ function fmt(c) {
   return { sign: c < 0 ? "−" : "", int: String(int).replace(/\B(?=(\d{3})+(?!\d))/g, "."), dec };
 }
 const money = c => { const f = fmt(c); return `${f.sign}${f.int},${f.dec}\u00a0€`; };
+const moneyShort = c => { const f = fmt(Math.round((c || 0) / 100) * 100); return `${f.sign}${f.int}\u00a0€`; };
 // price-tag style: cents smaller and raised, like a shelf label
 const tag = c => { const f = fmt(c); return `${f.sign}${f.int}<span class="cents">,${f.dec}</span><span class="cur">€</span>`; };
 const parseAmt = s => {
@@ -49,6 +50,12 @@ const P = {
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   paste: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h4"/>',
   photo: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m21 15.5-4.5-4.5L7 20"/>',
+  link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L11.8 5.8"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.4-1.4"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  chevL: '<path d="m14.5 6-6 6 6 6"/>',
+  chevR: '<path d="m9.5 6 6 6-6 6"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
   cloudOff: '<path d="m3 3 18 18"/><path d="M8.2 6.2A6 6 0 0 1 16.4 10h.6a4 4 0 0 1 3.2 6.4M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M4 3.5v5h5M20 20.5v-5h-5"/>'
 };
@@ -82,8 +89,16 @@ let sb = null, session = null, authReady = false, syncing = false, flushing = fa
 /* ============ cloud sync (Supabase) ============ */
 const COLS = {
   transactions: ["id","type","amount","cat","note","ts"],
-  goals: ["id","name","price","img","done","done_at","created_at"]
+  goals: ["id","name","price","img","done","done_at","created_at","url","deadline"]
 };
+const NEW_GOAL_COLS = ["url", "deadline"];
+let legacyGoals = false; // true while the database still lacks the url/deadline columns
+const missingCol = e => /url|deadline/.test(String(e?.message || "")) && /column|schema/i.test(String(e?.message || ""));
+function warnLegacy() {
+  if (legacyGoals) return;
+  legacyGoals = true;
+  toast("Link e date degli obiettivi restano su questo dispositivo: esegui l'aggiornamento SQL su Supabase");
+}
 const pick = (o, keys) => Object.fromEntries(keys.map(k => [k, o[k] ?? null]));
 const isNetErr = e => !navigator.onLine || /fetch|network|load failed|timeout/i.test(String(e?.message || e));
 
@@ -99,9 +114,14 @@ async function flush() {
   try {
     while (S.pending.length) {
       const op = S.pending[0];
-      const res = op.op === "up"
+      let res = op.op === "up"
         ? await sb.from(op.t).upsert(op.row)
         : await sb.from(op.t).delete().eq("id", op.id);
+      if (res.error && op.t === "goals" && missingCol(res.error)) {
+        warnLegacy();
+        const row = { ...op.row }; NEW_GOAL_COLS.forEach(k => delete row[k]);
+        res = await sb.from(op.t).upsert(row);
+      }
       if (res.error) {
         if (isNetErr(res.error)) break;
         console.error(res.error);
@@ -115,7 +135,9 @@ async function flush() {
 async function fetchAll(table) {
   const out = [], step = 1000;
   for (let from = 0; ; from += step) {
-    const { data, error } = await sb.from(table).select(COLS[table].join(",")).range(from, from + step - 1);
+    const cols = table === "goals" && legacyGoals ? COLS.goals.filter(c => !NEW_GOAL_COLS.includes(c)) : COLS[table];
+    const { data, error } = await sb.from(table).select(cols.join(",")).range(from, from + step - 1);
+    if (error && table === "goals" && !legacyGoals && missingCol(error)) { warnLegacy(); from -= step; continue; }
     if (error) throw error;
     out.push(...data);
     if (data.length < step) return out;
@@ -130,7 +152,11 @@ async function sync() {
     const [tx, goals] = await Promise.all([fetchAll("transactions"), fetchAll("goals")]);
     if (S.pending.length) return; // a change happened while downloading: next sync will catch up
     S.tx = Object.fromEntries(tx.map(r => [r.id, { ...r, amount: +r.amount, ts: +r.ts }]));
-    S.goals = Object.fromEntries(goals.map(r => [r.id, { ...r, price: +r.price, created_at: +r.created_at, done_at: r.done_at && +r.done_at }]));
+    S.goals = Object.fromEntries(goals.map(r => {
+      const local = S.goals[r.id] || {};
+      const extra = legacyGoals ? { url: local.url || null, deadline: local.deadline || null } : {};
+      return [r.id, { ...r, ...extra, price: +r.price, created_at: +r.created_at, done_at: r.done_at && +r.done_at }];
+    }));
     S.lastSync = Date.now(); save(); render();
   } catch (e) {
     console.warn("sync", e);
@@ -163,6 +189,19 @@ function derive() {
 }
 let D = derive();
 const goalPct = g => Math.max(0, Math.min(100, D.total / g.price * 100));
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "il sito"; } };
+const fmtDate = (d, opt = { day: "numeric", month: "long", year: "numeric" }) => new Date(d).toLocaleDateString("it-IT", opt);
+function deadlinePlan(g) {
+  if (!g.deadline) return "";
+  const left = g.price - D.total;
+  const end = new Date(g.deadline + "T23:59:59");
+  const days = (end - Date.now()) / DAY;
+  const when = fmtDate(end, { day: "numeric", month: "short", year: end.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
+  if (left <= 0) return `Obiettivo entro il ${when}: ci sei già`;
+  if (days < 0) return `La data che avevi scelto (${when}) è passata`;
+  const months = Math.max(1, days / 30.44);
+  return `Per arrivarci entro il ${when} ti servono ${money(Math.ceil(left / months / 100) * 100)} al mese`;
+}
 function eta(g) {
   const left = g.price - D.total;
   if (left <= 0) return "Hai abbastanza soldi: puoi comprarlo quando vuoi";
@@ -196,30 +235,37 @@ function dateTitle() {
 }
 const monthName = () => new Date().toLocaleDateString("it-IT", { month: "long" }).replace(/^./, c => c.toUpperCase());
 
+let range = 90, selMonth = 5;
+const RANGES = [[30, "1M"], [90, "3M"], [180, "6M"], [365, "1A"]];
+const MONTHS_SHORT = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+
 function homeScreen() {
   const next = D.active.find(g => g.price > D.total);
   const ready = D.active.filter(g => g.price <= D.total).length;
+  const months = monthStats();
   return `
   <header class="nav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div></header>
   <div id="syncBadge"></div>
   <section class="card balance">
-    <span class="lbl">Saldo</span>
+    <div class="bal-top"><span class="lbl">Saldo</span>
+      <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
     <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
+    ${balanceDelta()}
+    ${balanceChart()}
     <p class="next">${next ? `Mancano <b class="num">${money(next.price - D.total)}</b> per ${esc(next.name)}`
       : ready ? `${ready === 1 ? "Hai abbastanza per un obiettivo" : `Hai abbastanza per ${ready} obiettivi`}` : `Aggiungi un obiettivo per vedere quanto ti manca`}</p>
-    ${spark()}
   </section>
   <div class="actions">
     <button class="act out" data-new="out">${ic("minus", 20)}Uscita</button>
     <button class="act in" data-new="in">${ic("plus", 20)}Entrata</button>
   </div>
   <section class="section">
-    <div class="sec-h"><h2>${esc(monthName())}</h2></div>
-    <div class="card month">
-      <div><span>Entrate</span><b class="num">${money(D.mIn)}</b></div>
-      <div><span>Uscite</span><b class="num">${money(D.mOut)}</b></div>
-      <div><span>Risparmio</span><b class="num${D.mIn - D.mOut < 0 ? " neg" : " pos"}">${money(D.mIn - D.mOut)}</b></div>
-    </div>
+    <div class="sec-h"><h2>Mese per mese</h2></div>
+    <div class="card monthly">${monthlyChart(months)}${monthSummary(months[selMonth])}</div>
+  </section>
+  <section class="section">
+    <div class="sec-h"><h2>Dove vanno i soldi</h2><span class="sec-sub">${esc(months[selMonth].label)}</span></div>
+    ${categoryBreakdown(months[selMonth])}
   </section>
   <section class="section">
     <div class="sec-h"><h2>Obiettivi</h2>${D.active.length ? `<button class="link" data-tab="goals">Tutti</button>` : ""}</div>
@@ -232,13 +278,10 @@ function homeScreen() {
       : emptyCard("receipt", "Nessun movimento", "Tocca Entrata e segna i soldi che hai adesso: diventa il tuo saldo di partenza.")}
   </section>`;
 }
-function emptyCard(icon, title, text, action = "") {
-  return `<div class="card empty"><span class="empty-ico">${ic(icon, 26)}</span><b>${esc(title)}</b><span>${esc(text)}</span>${action}</div>`;
-}
 
-function spark() {
-  if (D.txs.length < 2) return "";
-  const days = 60, end = new Date(); end.setHours(23, 59, 59, 999);
+/* daily balance for the chosen range, oldest first */
+function balanceSeries(days) {
+  const end = new Date(); end.setHours(23, 59, 59, 999);
   const start = end.getTime() - (days - 1) * DAY;
   const asc = [...D.txs].reverse();
   let bal = 0, i = 0; const pts = [];
@@ -246,15 +289,117 @@ function spark() {
   for (let d = 0; d < days; d++) {
     const dEnd = start + d * DAY;
     while (i < asc.length && asc[i].ts <= dEnd) { bal += asc[i].type === "in" ? asc[i].amount : -asc[i].amount; i++; }
-    pts.push(bal);
+    pts.push({ t: dEnd, v: bal });
   }
-  const W = 400, H = 48, min = Math.min(...pts), max = Math.max(...pts);
-  const x = k => k / (days - 1) * W, y = v => H - 4 - (v - min) / (max - min || 1) * (H - 10);
-  const line = pts.map((v, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
-  const from = new Date(start).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
-  return `<div class="spark"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <path d="${line}" fill="none" stroke="var(--ink)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
-    <div class="spark-x"><span>${esc(from)}</span><span>oggi</span></div></div>`;
+  return pts;
+}
+let chartPts = [];
+function balanceDelta() {
+  if (!D.txs.length) return "";
+  const pts = balanceSeries(range), diff = pts[pts.length - 1].v - pts[0].v;
+  const label = { 30: "nell'ultimo mese", 90: "negli ultimi 3 mesi", 180: "negli ultimi 6 mesi", 365: "nell'ultimo anno" }[range];
+  return `<p class="delta"><b class="num ${diff >= 0 ? "pos" : "neg"}">${diff >= 0 ? "+" : "−"}${money(Math.abs(diff))}</b> ${label}</p>`;
+}
+function balanceChart() {
+  if (D.txs.length < 2) return "";
+  const pts = chartPts = balanceSeries(range);
+  const W = 1000, H = 120, vals = pts.map(p => p.v);
+  const min = Math.min(0, ...vals), max = Math.max(...vals, 1);
+  const x = k => k / (pts.length - 1) * W, y = v => H - (v - min) / (max - min || 1) * H;
+  const line = pts.map((p, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  const zero = min < 0 ? `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--ink3)" stroke-dasharray="4 6" vector-effect="non-scaling-stroke"/>` : "";
+  const lastY = y(pts[pts.length - 1].v) / H * 100;
+  return `<div class="bchart" data-chart="balance">
+    <div class="bchart-plot">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <line x1="0" x2="${W}" y1="0" y2="0" stroke="var(--line)" vector-effect="non-scaling-stroke"/>
+        <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)" vector-effect="non-scaling-stroke"/>
+        ${zero}
+        <path d="${line} L${W} ${H} L0 ${H}Z" fill="var(--ink)" opacity=".05"/>
+        <path d="${line}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+      <span class="bdot end" style="left:100%;top:${lastY}%"></span>
+      <span class="bcross" hidden></span><span class="bdot hov" hidden></span>
+      <div class="btip" hidden></div>
+      <span class="ylab top num">${moneyShort(max)}</span><span class="ylab bot num">${moneyShort(min)}</span>
+    </div>
+    <div class="bchart-x"><span>${esc(fmtDate(pts[0].t, { day: "numeric", month: "short" }))}</span><span>oggi</span></div>
+  </div>`;
+}
+function chartHover(el, clientX) {
+  const plot = el.querySelector(".bchart-plot"), r = plot.getBoundingClientRect();
+  const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  const k = Math.round(f * (chartPts.length - 1)), p = chartPts[k];
+  const vals = chartPts.map(q => q.v), min = Math.min(0, ...vals), max = Math.max(...vals, 1);
+  const left = k / (chartPts.length - 1) * 100, top = 100 - (p.v - min) / (max - min || 1) * 100;
+  const cross = plot.querySelector(".bcross"), dot = plot.querySelector(".hov"), tip = plot.querySelector(".btip");
+  cross.hidden = dot.hidden = tip.hidden = false;
+  cross.style.left = dot.style.left = left + "%"; dot.style.top = top + "%";
+  tip.innerHTML = `<span>${esc(fmtDate(p.t, { weekday: "short", day: "numeric", month: "short" }))}</span><b class="num">${money(p.v)}</b>`;
+  tip.style.left = Math.max(14, Math.min(86, left)) + "%";
+  plot.querySelector(".end").hidden = k === chartPts.length - 1;
+}
+function chartLeave(el) {
+  const plot = el.querySelector(".bchart-plot");
+  plot.querySelectorAll(".bcross,.hov,.btip").forEach(n => n.hidden = true);
+  plot.querySelector(".end").hidden = false;
+}
+
+/* last six months: income, spending and category split */
+function monthStats() {
+  const now = new Date(), out = [];
+  for (let k = 5; k >= 0; k--) {
+    const a = new Date(now.getFullYear(), now.getMonth() - k, 1), b = new Date(now.getFullYear(), now.getMonth() - k + 1, 1);
+    out.push({ start: a.getTime(), end: b.getTime(), short: MONTHS_SHORT[a.getMonth()],
+      label: a.toLocaleDateString("it-IT", { month: "long", year: a.getFullYear() !== now.getFullYear() ? "numeric" : undefined }).replace(/^./, c => c.toUpperCase()),
+      in: 0, out: 0, cats: {} });
+  }
+  for (const t of D.txs) {
+    const m = out.find(m => t.ts >= m.start && t.ts < m.end); if (!m) continue;
+    if (t.type === "in") m.in += t.amount;
+    else { m.out += t.amount; const c = catInfo("out", t.cat)[0]; m.cats[c] = (m.cats[c] || 0) + t.amount; }
+  }
+  return out;
+}
+function monthlyChart(months) {
+  const max = Math.max(1, ...months.flatMap(m => [m.in, m.out]));
+  const nice = niceMax(max);
+  return `<div class="mchart">
+    <div class="legend"><span><i class="sw in"></i>Entrate</span><span><i class="sw out"></i>Uscite</span></div>
+    <div class="mplot">
+      <div class="mgrid"><span class="num">${moneyShort(nice)}</span><span class="num">${moneyShort(nice / 2)}</span><span></span></div>
+      <div class="mbars">${months.map((m, k) => `<button class="mgroup${k === selMonth ? " sel" : ""}" data-month="${k}" aria-label="${esc(m.label)}: entrate ${money(m.in)}, uscite ${money(m.out)}">
+        <span class="bars"><i class="bin" style="height:${m.in / nice * 100}%"></i><i class="bout" style="height:${m.out / nice * 100}%"></i></span>
+        <span class="mlab">${m.short}</span></button>`).join("")}</div>
+    </div></div>`;
+}
+function niceMax(v) {
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+}
+function monthSummary(m) {
+  const net = m.in - m.out;
+  return `<div class="msum">
+    <div><span>Entrate</span><b class="num">${money(m.in)}</b></div>
+    <div><span>Uscite</span><b class="num">${money(m.out)}</b></div>
+    <div><span>Risparmio</span><b class="num ${net < 0 ? "neg" : "pos"}">${net < 0 ? "−" : ""}${money(Math.abs(net))}</b></div>
+  </div>`;
+}
+function categoryBreakdown(m) {
+  const rows = Object.entries(m.cats).sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return emptyCard("cart", "Nessuna spesa", `In ${m.label.toLowerCase()} non hai segnato uscite.`);
+  const top = rows[0][1];
+  return `<div class="list cats-break">${rows.map(([name, v]) => {
+    const icon = name === "Obiettivo" ? "flag" : (CATS.out.find(c => c[0] === name) || [, "arrowOut"])[1];
+    return `<div class="crow"><span class="ico">${ic(icon, 20)}</span>
+      <div class="cmain"><div class="ctop"><b>${esc(name)}</b><span class="num">${money(v)}</span></div>
+      <div class="cbar"><i style="width:${v / top * 100}%"></i></div></div>
+      <span class="cpct num">${Math.round(v / m.out * 100)}%</span></div>`;
+  }).join("")}</div>`;
+}
+
+function emptyCard(icon, title, text, action = "") {
+  return `<div class="card empty"><span class="empty-ico">${ic(icon, 26)}</span><b>${esc(title)}</b><span>${esc(text)}</span>${action}</div>`;
 }
 
 function txRow(t) {
@@ -268,23 +413,31 @@ function txRow(t) {
   </button>`;
 }
 
+let movQuery = "";
 function movScreen() {
-  const list = D.txs.filter(t => movFilter === "all" || t.type === movFilter);
+  return `
+  <header class="nav"><div><h1>Movimenti</h1></div><button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></header>
+  <div class="search">${ic("search", 18)}<input id="movQ" type="search" placeholder="Cerca per nota o categoria" value="${esc(movQuery)}" autocomplete="off"></div>
+  <div class="seg" role="group">
+    ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
+  </div>
+  <div id="movList">${movList()}</div>`;
+}
+function movList() {
+  const q = movQuery.trim().toLowerCase();
+  const list = D.txs.filter(t => (movFilter === "all" || t.type === movFilter)
+    && (!q || (t.note || "").toLowerCase().includes(q) || catInfo(t.type, t.cat)[0].toLowerCase().includes(q)));
   const groups = [];
   for (const t of list) {
     const d = new Date(t.ts), k = d.getFullYear() + "-" + d.getMonth();
     if (!groups.length || groups[groups.length - 1].k !== k) groups.push({ k, d, items: [], net: 0 });
     const g = groups[groups.length - 1]; g.items.push(t); g.net += t.type === "in" ? t.amount : -t.amount;
   }
-  return `
-  <header class="nav"><div><h1>Movimenti</h1></div><button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></header>
-  <div class="seg" role="group">
-    ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
-  </div>
-  ${groups.length ? groups.map(g => `
+  if (!groups.length) return q ? emptyCard("search", "Nessun risultato", `Nessun movimento contiene "${movQuery.trim()}".`)
+    : emptyCard("receipt", "Niente da mostrare", "I movimenti che segni compaiono qui, divisi per mese.");
+  return groups.map(g => `
     <div class="group-h"><span>${esc(g.d.toLocaleDateString("it-IT", { month: "long", year: "numeric" }))}</span><span class="num">${g.net >= 0 ? "+" : "−"}${money(Math.abs(g.net))}</span></div>
-    <div class="list">${g.items.map(txRow).join("")}</div>`).join("")
-    : emptyCard("receipt", "Niente da mostrare", "I movimenti che segni compaiono qui, divisi per mese.")}`;
+    <div class="list">${g.items.map(txRow).join("")}</div>`).join("");
 }
 
 function goalThumb(g) {
@@ -297,6 +450,7 @@ function goalCard(g) {
     <b>${esc(g.name)}</b>
     <div class="prog"><i style="width:${pct}%"></i></div>
     <div class="gmeta"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><span class="num">${money(g.price)}</span></div>
+    ${g.deadline ? `<div class="gdate">${ic("calendar", 14)}<span>entro ${esc(fmtDate(g.deadline + "T12:00", { day: "numeric", month: "short" }))}</span></div>` : ""}
   </button>`;
 }
 function goalsScreen() {
@@ -601,7 +755,10 @@ function goalEditSheet(existing) {
     <div class="fields">
       <div class="field"><input id="gName" placeholder="Cosa vuoi comprare? Es. AirPods Pro" maxlength="60" value="${esc(existing?.name || "")}"></div>
       <div class="field"><label for="gPrice">Prezzo €</label><input id="gPrice" inputmode="decimal" placeholder="0,00" style="text-align:right" value="${existing ? esc(centsToInput(existing.price)) : ""}"></div>
+      <div class="field">${ic("link", 18)}<input id="gUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="Link al prodotto (facoltativo)" value="${esc(existing?.url || "")}"></div>
+      <div class="field"><label for="gDate">Entro il</label><input id="gDate" type="date" style="text-align:right" value="${esc(existing?.deadline || "")}"></div>
     </div>
+    <p class="hint">Con una data l'app ti dice quanto mettere da parte ogni mese.</p>
     <div class="group-h"><span>Foto del prodotto</span></div>
     <div class="pick">
       <div class="gimg" id="gPrev"></div>
@@ -631,6 +788,10 @@ function goalEditSheet(existing) {
       catch { toast("Non riesco a leggere questa immagine"); }
     };
     nameIn.oninput = validate; priceIn.oninput = validate;
+    $("#gUrl").addEventListener("paste", e => {
+      const t = e.clipboardData?.getData("text") || "", m = t.match(/https?:\/\/\S+/);
+      if (m && m[0] !== t.trim()) { e.preventDefault(); $("#gUrl").value = m[0]; }
+    });
     sh.querySelector("[data-x]").onclick = close;
     $("#gSearch").onclick = e => { if (!nameIn.value.trim()) { e.preventDefault(); toast("Scrivi prima il nome del prodotto"); nameIn.focus(); } };
     $("#gFile").onclick = () => { const f = $("#fileIn"); f.value = ""; f.onchange = () => setImg(f.files[0]); f.click(); };
@@ -657,7 +818,10 @@ function goalEditSheet(existing) {
     saveB.onclick = () => {
       const name = nameIn.value.trim(), price = parseAmt(priceIn.value);
       if (!name || !price) return;
-      const g = existing ? { ...existing, name, price, img } : { id: uuid(), name, price, img, done: false, done_at: null, created_at: Date.now() };
+      let url = $("#gUrl").value.trim();
+      if (url && !/^https?:\/\//i.test(url)) url = "https://" + url;
+      const deadline = $("#gDate").value || null;
+      const g = existing ? { ...existing, name, price, img, url: url || null, deadline } : { id: uuid(), name, price, img, url: url || null, deadline, done: false, done_at: null, created_at: Date.now() };
       close(); putGoal(g); if (!existing && tab !== "goals" && tab !== "home") setTab("goals");
       toast(existing ? "Obiettivo aggiornato" : `${name} aggiunto agli obiettivi`);
       celebrateIfReached();
@@ -694,8 +858,10 @@ function goalSheet(id) {
         <div><span>Prezzo</span><b class="num">${money(g.price)}</b></div>
         <div><span>Mancano</span><b class="num${left ? "" : " pos"}">${left ? money(left) : "0 €"}</b></div>
       </div>
-      <div class="eta">${esc(eta(g))}</div>
+      <p class="eta">${esc(eta(g))}</p>
+      ${g.deadline && !ok ? `<div class="plan">${ic("calendar", 18)}<span>${esc(deadlinePlan(g))}</span></div>` : ""}
     </div>
+    ${g.url ? `<a class="save ghost linkbtn" href="${esc(g.url)}" target="_blank" rel="noopener">${ic("external", 18)}Apri su ${esc(hostOf(g.url))}</a>` : ""}
     <button class="save ${ok ? "in" : "ghost"}" id="gBuy">${ok ? "L'ho comprato" : "L'ho comprato lo stesso"}</button>
     <div id="buyBox"></div>
     <button class="save danger" id="gDel">Elimina obiettivo</button>
@@ -751,6 +917,9 @@ async function importBackup(file) {
 
 /* ============ events ============ */
 document.addEventListener("click", e => {
+  const rb = e.target.closest("[data-range]"), mb = e.target.closest("[data-month]");
+  if (rb) { range = +rb.dataset.range; render(); return; }
+  if (mb) { selMonth = +mb.dataset.month; render(); return; }
   const el = e.target.closest("[data-tab],[data-new],[data-goal-new],[data-goal],[data-tx],[data-filter],[data-more]");
   if (!el || el.closest(".sheet")) return;
   if (el.dataset.tab) setTab(el.dataset.tab);
@@ -767,6 +936,12 @@ document.addEventListener("click", e => {
     else if (a === "export") exportBackup();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
+});
+document.addEventListener("pointermove", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
+document.addEventListener("pointerdown", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
+document.addEventListener("pointerout", e => { const c = e.target.closest("[data-chart=balance]"); if (c && !c.contains(e.relatedTarget)) chartLeave(c); });
+document.addEventListener("input", e => {
+  if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); }
 });
 addEventListener("online", () => { syncBadge(); sync(); });
 addEventListener("offline", syncBadge);

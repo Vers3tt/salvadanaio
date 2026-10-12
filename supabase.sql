@@ -52,3 +52,7 @@ begin
     alter publication supabase_realtime add table public.goals;
   end if;
 end $$;
+
+-- Aggiornamento: link e data obiettivo per gli obiettivi
+alter table public.goals add column if not exists url text;
+alter table public.goals add column if not exists deadline text;
