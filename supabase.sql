@@ -38,6 +38,10 @@ drop policy if exists "solo i miei obiettivi" on public.goals;
 create policy "solo i miei obiettivi" on public.goals
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Accesso solo agli utenti che hanno fatto login (funziona anche con "Automatically expose new tables" disattivato)
+revoke all on public.transactions, public.goals from anon;
+grant select, insert, update, delete on public.transactions, public.goals to authenticated;
+
 -- Aggiornamenti in tempo reale tra i dispositivi
 do $$
 begin
