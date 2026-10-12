@@ -75,7 +75,9 @@ function coinSvg(cls, cx, cy, r, detail) {
   </g>`;
 }
 const logoInner = () => `<g opacity=".35">${coinSvg("back2", 60, 40, 30)}</g><g opacity=".6">${coinSvg("back1", 55, 45, 30)}</g>${coinSvg("front", 47, 53, 30, true)}`;
-const logoSvg = (size = 84) => `<svg class="logo logo-svg" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">${logoInner()}</svg>`;
+// the tile behind the coins is invisible in light mode and becomes a light square in dark mode
+const logoTile = () => `<rect class="logo-tile" x="-8" y="-8" width="116" height="116" rx="27"/>`;
+const logoSvg = (size = 84) => `<svg class="logo logo-svg" width="${size}" height="${size}" viewBox="-8 -8 116 116" aria-hidden="true">${logoTile()}${logoInner()}</svg>`;
 
 /* Mascotte: la moneta-muso, sempre in alto a destra. Fluttua, sbatte le narici,
    salta quando entrano soldi, si schiaccia quando escono, e se la tocchi ti dice come vai. */
@@ -1252,8 +1254,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) sync
 let splashOn = !!document.getElementById("splash"), authHeld = false;
 (function splash() {
   const el = $("#splash"); if (!el) return;
-  $("#splashLogo").setAttribute("viewBox", "0 0 100 100");
-  $("#splashLogo").innerHTML = logoInner();
+  $("#splashLogo").setAttribute("viewBox", "-8 -8 116 116");
+  $("#splashLogo").innerHTML = logoTile() + logoInner();
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let done = false;
   const hide = () => {

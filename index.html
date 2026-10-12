@@ -311,13 +311,11 @@ input{border:0;outline:none;background:none}
 #splash .front{transform-box:fill-box;transform-origin:50% 100%;opacity:0;animation:drop .7s cubic-bezier(.3,1.4,.5,1) .32s forwards}
 #splash .nostrils{transform-box:fill-box;transform-origin:center;animation:blink .32s ease 1.15s}
 #splash .name{font-family:var(--font-d);font-size:30px;font-weight:700;letter-spacing:-.03em;color:var(--ink);opacity:0;transform:translateY(8px);animation:rise .5s ease .75s forwards}
-@media (prefers-color-scheme:dark){#splash svg,.auth .logo{background:var(--tile);border-radius:24%;padding:11%;box-sizing:border-box;overflow:hidden}}
 .nav-logo{flex:none;margin-bottom:2px}
 .nav-logo .logo{width:46px;height:46px;margin:0}
 .about{display:grid;justify-items:center;gap:4px;margin:34px 0 8px;color:var(--ink2);font-size:13.5px;text-align:center}
 .about .logo{width:56px;height:56px;margin:0 0 6px}
 .about b{color:var(--ink);font-size:16px}
-@media (prefers-color-scheme:dark){.nav-logo .logo,.about .logo{background:var(--tile);border-radius:24%;padding:10%;box-sizing:border-box}}
 /* mascotte */
 .nav{position:relative}
 .nav-r{display:flex;align-items:center;gap:10px}
@@ -374,6 +372,8 @@ button.crow{width:100%;text-align:left}
 .dots{display:flex;gap:6px;justify-content:center;margin-top:10px}
 .dots i{width:7px;height:7px;border-radius:50%;background:var(--ink3)}
 .dots i.on{background:var(--ink);width:18px;border-radius:4px}
+.logo-tile{fill:transparent}
+@media (prefers-color-scheme:dark){.logo-tile{fill:var(--tile)}}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}
