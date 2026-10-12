@@ -120,7 +120,8 @@ function mascotLine() {
 function mascotSay(btn) {
   document.querySelectorAll(".m-bubble").forEach(b => b.remove());
   const b = document.createElement("div"); b.className = "m-bubble"; b.textContent = mascotLine();
-  btn.closest(".nav").appendChild(b);
+  const host = btn.closest(".nav") || btn.closest(".ob-hero"); if (!host) return;
+  host.appendChild(b);
   setTimeout(() => b.classList.add("out"), 3600); setTimeout(() => b.remove(), 4000);
 }
 
@@ -136,8 +137,9 @@ function catInfo(type, name) {
 /* ============ state & persistence ============ */
 const LS = "salvadanaio.v2";
 const CFG_LS = "salvadanaio.cfg";
-let S = { tx: {}, goals: {}, pending: [], mode: null, lastSync: 0 };
+let S = { tx: {}, goals: {}, rec: {}, settings: {}, pending: [], mode: null, lastSync: 0 };
 try { Object.assign(S, JSON.parse(localStorage.getItem(LS) || "{}")); } catch {}
+S.rec = S.rec || {}; S.settings = S.settings || {};
 function save() {
   try { localStorage.setItem(LS, JSON.stringify(S)); }
   catch { toast("Memoria del telefono piena: elimina qualche immagine"); }
@@ -147,13 +149,20 @@ const fileCfg = window.SALVADANAIO_CONFIG || {};
 let cfg = { supabaseUrl: fileCfg.supabaseUrl, supabaseAnonKey: fileCfg.supabaseAnonKey };
 try { if (!cfg.supabaseUrl) Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_LS) || "{}")); } catch {}
 
-let sb = null, session = null, authReady = false, syncing = false, flushing = false;
+let sb = null, session = null, authReady = false, syncing = false, flushing = false, firstSyncDone = false;
 
 /* ============ cloud sync (Supabase) ============ */
 const COLS = {
   transactions: ["id","type","amount","cat","note","ts"],
-  goals: ["id","name","price","img","done","done_at","created_at","url","deadline"]
+  goals: ["id","name","price","img","done","done_at","created_at","url","deadline"],
+  recurring: ["id","type","amount","cat","note","freq","next_ts","active","created_at"]
 };
+let schemaWarned = false; // settings/recurring tables not created yet: keep those data on this device
+const missingTable = e => /could not find the table|does not exist|schema cache/i.test(String(e?.message || "")) && !/column/i.test(String(e?.message || ""));
+function warnSchema() {
+  if (schemaWarned) return; schemaWarned = true;
+  toast("Budget e ricorrenti restano su questo dispositivo finché non esegui l'aggiornamento SQL su Supabase");
+}
 const NEW_GOAL_COLS = ["url", "deadline"];
 let legacyGoals = false; // true while the database still lacks the url/deadline columns
 const missingCol = e => /url|deadline/.test(String(e?.message || "")) && /column|schema/i.test(String(e?.message || ""));
@@ -178,8 +187,9 @@ async function flush() {
     while (S.pending.length) {
       const op = S.pending[0];
       let res = op.op === "up"
-        ? await sb.from(op.t).upsert(op.row)
+        ? await sb.from(op.t).upsert(op.row, op.t === "settings" ? { onConflict: "user_id" } : undefined)
         : await sb.from(op.t).delete().eq("id", op.id);
+      if (res.error && (op.t === "settings" || op.t === "recurring") && missingTable(res.error)) { warnSchema(); res = { error: null }; }
       if (res.error && op.t === "goals" && missingCol(res.error)) {
         warnLegacy();
         const row = { ...op.row }; NEW_GOAL_COLS.forEach(k => delete row[k]);
@@ -212,7 +222,10 @@ async function sync() {
   try {
     await flush();
     if (S.pending.length) return;
-    const [tx, goals] = await Promise.all([fetchAll("transactions"), fetchAll("goals")]);
+    const optional = p => p.catch(e => { if (missingTable(e)) { warnSchema(); return null; } throw e; });
+    const [tx, goals, rec, settingsRows] = await Promise.all([fetchAll("transactions"), fetchAll("goals"),
+      optional(fetchAll("recurring")),
+      optional(sb.from("settings").select("data").limit(1).then(({ data, error }) => { if (error) throw error; return data; }))]);
     if (S.pending.length) return; // a change happened while downloading: next sync will catch up
     S.tx = Object.fromEntries(tx.map(r => [r.id, { ...r, amount: +r.amount, ts: +r.ts }]));
     S.goals = Object.fromEntries(goals.map(r => {
@@ -220,7 +233,14 @@ async function sync() {
       const extra = legacyGoals ? { url: local.url || null, deadline: local.deadline || null } : {};
       return [r.id, { ...r, ...extra, price: +r.price, created_at: +r.created_at, done_at: r.done_at && +r.done_at }];
     }));
+    if (rec) S.rec = Object.fromEntries(rec.map(r => [r.id, { ...r, amount: +r.amount, next_ts: +r.next_ts, created_at: +r.created_at }]));
+    if (settingsRows) {
+      if (settingsRows.length) S.settings = settingsRows[0].data || {};
+      else if (Object.keys(S.settings).length) enqueue({ op: "up", t: "settings", row: { data: S.settings } });
+    }
+    firstSyncDone = true;
     S.lastSync = Date.now(); save(); render();
+    runRecurring();
   } catch (e) {
     console.warn("sync", e);
   } finally { syncing = false; syncBadge(); }
@@ -231,6 +251,9 @@ function putTx(t) { S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: 
 function delTx(id) { delete S.tx[id]; enqueue({ op: "del", t: "transactions", id }); commit(); }
 function putGoal(g) { S.goals[g.id] = g; enqueue({ op: "up", t: "goals", row: pick(g, COLS.goals) }); commit(); }
 function delGoal(id) { delete S.goals[id]; enqueue({ op: "del", t: "goals", id }); commit(); }
+function putRec(r) { S.rec[r.id] = r; enqueue({ op: "up", t: "recurring", row: pick(r, COLS.recurring) }); commit(); }
+function delRec(id) { delete S.rec[id]; enqueue({ op: "del", t: "recurring", id }); commit(); }
+function saveSettings(patch) { S.settings = { ...S.settings, ...patch }; enqueue({ op: "up", t: "settings", row: { data: S.settings } }); commit(); }
 function commit() { save(); render(); flush(); }
 
 /* ============ derived ============ */
@@ -284,6 +307,7 @@ function render() {
   if (S.mode === "cloud" && !authReady) { $("#app").innerHTML = ""; return; }
   if (S.mode === "cloud" && !session) return renderLogin();
   D = derive();
+  if (needsOnboarding()) return renderOnboarding();
   const screens = { home: homeScreen, mov: movScreen, goals: goalsScreen, more: moreScreen };
   $("#app").innerHTML = `<main class="screen">${screens[tab]()}</main>
   <div class="tabbar"><nav>
@@ -329,7 +353,8 @@ function homeScreen() {
     <div class="card monthly">${monthlyChart(months)}${monthSummary(months[selMonth])}</div>
   </section>
   <section class="section">
-    <div class="sec-h"><h2>Dove vanno i soldi</h2><span class="sec-sub">${esc(months[selMonth].label)}</span></div>
+    <div class="sec-h"><h2>Dove vanno i soldi</h2><button class="link" data-budgets>${Object.keys(S.settings.budgets || {}).length ? "Budget" : "Imposta budget"}</button></div>
+    <p class="sec-note">${esc(months[selMonth].label)}</p>
     ${categoryBreakdown(months[selMonth])}
   </section>
   <section class="section">
@@ -451,15 +476,21 @@ function monthSummary(m) {
   </div>`;
 }
 function categoryBreakdown(m) {
-  const rows = Object.entries(m.cats).sort((a, b) => b[1] - a[1]);
+  const budgets = S.settings.budgets || {};
+  const names = new Set([...Object.keys(m.cats), ...Object.keys(budgets).filter(k => budgets[k] > 0)]);
+  const rows = [...names].map(n => [n, m.cats[n] || 0, budgets[n] || 0]).sort((a, b) => b[1] - a[1] || b[2] - a[2]);
   if (!rows.length) return emptyCard("cart", "Nessuna spesa", `In ${m.label.toLowerCase()} non hai segnato uscite.`);
-  const top = rows[0][1];
-  return `<div class="list cats-break">${rows.map(([name, v]) => {
+  const top = Math.max(...rows.map(r => r[1]), 1);
+  return `<div class="list cats-break">${rows.map(([name, v, bud]) => {
     const icon = name === "Obiettivo" ? "flag" : (CATS.out.find(c => c[0] === name) || [, "arrowOut"])[1];
-    return `<div class="crow"><span class="ico">${ic(icon, 20)}</span>
+    const ratio = bud ? v / bud : 0, state = !bud ? "" : ratio > 1 ? "over" : ratio >= .8 ? "warn" : "";
+    const sub = bud ? (ratio > 1 ? `Superato di ${money(v - bud)}` : `Restano ${money(bud - v)} di ${money(bud)}`) : "";
+    return `<button class="crow ${state}" data-budgets>
+      <span class="ico">${ic(icon, 20)}</span>
       <div class="cmain"><div class="ctop"><b>${esc(name)}</b><span class="num">${money(v)}</span></div>
-      <div class="cbar"><i style="width:${v / top * 100}%"></i></div></div>
-      <span class="cpct num">${Math.round(v / m.out * 100)}%</span></div>`;
+      <div class="cbar"><i style="width:${Math.min(100, bud ? ratio * 100 : v / top * 100)}%"></i></div>
+      ${sub ? `<small class="csub num">${esc(sub)}</small>` : ""}</div>
+      <span class="cpct num">${bud ? Math.round(ratio * 100) : m.out ? Math.round(v / m.out * 100) : 0}%</span></button>`;
   }).join("")}</div>`;
 }
 
@@ -541,9 +572,15 @@ function moreScreen() {
     ${cloud ? `<div class="cell"><span>Email</span><span>${esc(session?.user?.email || "")}</span></div>
       <div class="cell"><span>Ultimo aggiornamento</span><span id="syncText">${esc(last)}</span></div>
       <button class="cell btn" data-more="sync"><span>Aggiorna adesso</span></button>
+      <button class="cell btn" data-more="password"><span>Cambia password</span></button>
       <button class="cell danger" data-more="logout"><span>Esci</span></button>`
     : `<div class="cell"><span>Dati salvati</span><span>Solo su questo dispositivo</span></div>
-      <button class="cell btn" data-more="setup"><span>Collega Supabase</span></button>`}
+      <button class="cell btn" data-more="setup"><span>Accedi per salvare i dati online</span></button>`}
+  </div>
+  <div class="group-h"><span>Pianificazione</span></div>
+  <div class="list">
+    <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
+    <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
   </div>
   <div class="group-h"><span>Backup</span></div>
   <div class="list">
@@ -557,7 +594,9 @@ function moreScreen() {
     <div class="cell"><span>Obiettivi attivi</span><span class="num">${D.active.length}</span></div>
     <div class="cell"><span>Obiettivi comprati</span><span class="num">${D.done.length}</span></div>
   </div>
-  <div class="about">${logoSvg(56)}<b>Salvadanaio</b><span>I tuoi risparmi, sempre con te</span></div>
+  ${cloud ? `<div class="list" style="margin-top:22px"><button class="cell danger" data-more="delete"><span>Elimina account e dati</span></button></div>` : ""}
+  <div class="about">${logoSvg(56)}<b>Salvadanaio</b><span>I tuoi risparmi, sempre con te</span>
+    <span class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></span></div>
   <input type="file" id="importIn" accept="application/json,.json" hidden>`;
 }
 
@@ -623,13 +662,22 @@ function renderLogin() {
         <div class="field"><input id="lEmail" type="email" autocomplete="email" placeholder="Email" required></div>
         <div class="field"><input id="lPass" type="password" autocomplete="${signup ? "new-password" : "current-password"}" placeholder="Password${signup ? " (almeno 6 caratteri)" : ""}" required minlength="6"></div>
       </div>
+      ${signup ? `<label class="terms"><input type="checkbox" id="lTerms" required><span>Accetto i <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a> e l'<a href="privacy.html" target="_blank" rel="noopener">Informativa privacy</a></span></label>` : ""}
       <div class="err" id="lErr"></div>
       <button class="save" type="submit" id="lGo">${signup ? "Crea account" : "Accedi"}</button>
+      ${signup ? "" : `<button class="alt" type="button" id="lForgot" style="color:var(--ink2)">Password dimenticata?</button>`}
       <button class="alt" type="button" id="lSwap">${signup ? "Ho già un account" : "Prima volta? Crea un account"}</button>
       <button class="alt" type="button" id="lLocal" style="color:var(--label2)">Usa senza account, solo su questo dispositivo</button>
     </form></div>`;
     $("#lSwap").onclick = () => { signup = !signup; draw(); };
+    if ($("#lForgot")) $("#lForgot").onclick = async () => {
+      const email = $("#lEmail").value.trim();
+      if (!/.+@.+\..+/.test(email)) { $("#lErr").textContent = "Scrivi la tua email qui sopra, poi tocca di nuovo Password dimenticata."; $("#lEmail").focus(); return; }
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      $("#lErr").textContent = error ? italianAuthError(error) : "Ti ho mandato un'email con il link per scegliere una nuova password.";
+    };
     $("#lLocal").onclick = () => { S.mode = "local"; save(); render(); };
+    $("#loginForm").insertAdjacentHTML("beforeend", `<p class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></p>`);
     $("#loginForm").onsubmit = async e => {
       e.preventDefault();
       const email = $("#lEmail").value.trim(), password = $("#lPass").value;
@@ -661,12 +709,15 @@ function startCloud() {
     // carry this device's data to the cloud once logged in
     Object.values(S.tx).forEach(t => enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }));
     Object.values(S.goals).forEach(g => enqueue({ op: "up", t: "goals", row: pick(g, COLS.goals) }));
+    Object.values(S.rec).forEach(r => enqueue({ op: "up", t: "recurring", row: pick(r, COLS.recurring) }));
+    if (Object.keys(S.settings).length) enqueue({ op: "up", t: "settings", row: { data: S.settings } });
   }
   save();
   sb.auth.onAuthStateChange((ev, s) => {
     const had = !!session; session = s;
     if (!authReady) return;
-    if (ev === "SIGNED_OUT") { S.tx = {}; S.goals = {}; S.pending = []; save(); }
+    if (ev === "SIGNED_OUT") { S.tx = {}; S.goals = {}; S.rec = {}; S.settings = {}; S.pending = []; firstSyncDone = false; save(); }
+    if (ev === "PASSWORD_RECOVERY") setTimeout(() => passwordSheet(true), 300);
     if (!!s !== had || ev === "SIGNED_IN") { render(); if (s) { sync(); live(); } }
     if (!s) live(false);
   });
@@ -732,6 +783,8 @@ function txSheet(type, existing) {
     <div class="fields">
       <div class="field"><input id="txNote" placeholder="Nota (facoltativa)" maxlength="80" value="${esc(existing?.note || "")}"></div>
       <div class="field"><label for="txDate">Data</label><input id="txDate" type="date" value="${dateVal}" style="text-align:right"></div>
+      ${existing ? "" : `<div class="field"><label for="txRep">Ripeti</label><select id="txRep">
+        <option value="">Mai</option><option value="week">Ogni settimana</option><option value="month">Ogni mese</option><option value="year">Ogni anno</option></select></div>`}
     </div>
     <div class="keypad" id="keypad">${["1","2","3","4","5","6","7","8","9",",","0","⌫"].map(k => `<button type="button" data-k="${k}" aria-label="${k === "⌫" ? "Cancella" : k}">${k}</button>`).join("")}</div>
     <button class="save" id="txSave">Salva</button>
@@ -782,9 +835,13 @@ function txSheet(type, existing) {
       }
       const rec = { id: existing?.id || uuid(), type: t, amount, cat, note: $("#txNote").value.trim(), ts };
       const before = existing ? { ...existing } : null;
+      const freq = existing ? "" : $("#txRep").value;
+      const spentBefore = t === "out" ? spentThisMonth(cat) : 0;
       close(); putTx(rec);
-      toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata`, () => before ? putTx(before) : delTx(rec.id));
+      if (freq) putRec({ id: uuid(), type: t, amount, cat, note: rec.note, freq, next_ts: advance(ts, freq), active: true, created_at: Date.now() });
+      toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata${freq ? `, si ripete ${FREQ[freq].toLowerCase()}` : ""}`, () => before ? putTx(before) : delTx(rec.id));
       if (!existing) mascotReact(t === "in" ? "jump" : "squish");
+      if (!existing && t === "out") setTimeout(() => budgetAlert(cat, spentBefore, spentBefore + amount), 1800);
       celebrateIfReached(before ? before : null);
     };
     if (existing) $("#txDel").onclick = () => { const c = { ...existing }; close(); delTx(c.id); toast("Movimento eliminato", () => putTx(c)); };
@@ -982,8 +1039,177 @@ async function importBackup(file) {
   } catch { toast("Questo file non è un backup del Salvadanaio"); }
 }
 
+/* ============ recurring ============ */
+const FREQ = { week: "Ogni settimana", month: "Ogni mese", year: "Ogni anno" };
+function advance(ts, freq) {
+  const d = new Date(ts);
+  if (freq === "week") return ts + 7 * DAY;
+  const day = d.getDate(), add = freq === "year" ? 12 : 1;
+  const n = new Date(d.getFullYear(), d.getMonth() + add, 1, d.getHours(), d.getMinutes());
+  n.setDate(Math.min(day, new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate()));
+  return n.getTime();
+}
+// same id on every device for the same occurrence, so two phones never create it twice
+async function occurrenceId(ruleId, ts) {
+  const h = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(ruleId + ":" + ts)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${(8 + (parseInt(h[16], 16) & 3)).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+let recRunning = false;
+async function runRecurring() {
+  if (recRunning || !crypto.subtle) return; recRunning = true;
+  try {
+    let added = 0; const now = Date.now();
+    for (const r of Object.values(S.rec)) {
+      if (!r.active || r.next_ts > now) continue;
+      let next = r.next_ts, guard = 0;
+      while (next <= now && guard++ < 60) {
+        const id = await occurrenceId(r.id, next);
+        if (!S.tx[id]) {
+          const t = { id, type: r.type, amount: r.amount, cat: r.cat, note: r.note, ts: next };
+          S.tx[id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); added++;
+        }
+        next = advance(next, r.freq);
+      }
+      const upd = { ...r, next_ts: next }; S.rec[r.id] = upd;
+      enqueue({ op: "up", t: "recurring", row: pick(upd, COLS.recurring) });
+    }
+    if (added) { commit(); toast(added === 1 ? "Aggiunto 1 movimento ricorrente" : `Aggiunti ${added} movimenti ricorrenti`); }
+  } finally { recRunning = false; }
+}
+function recurringSheet() {
+  const list = Object.values(S.rec).sort((a, b) => a.next_ts - b.next_ts);
+  sheet(`<div class="sheet-h"><span></span><h3>Ricorrenti</h3><button class="r" data-x>Fine</button></div>
+    ${list.length ? `<div class="list">${list.map(r => {
+      const [name, icon] = catInfo(r.type, r.cat);
+      return `<div class="row rrow${r.active ? "" : " paused"}">
+        <span class="ico">${ic(icon, 20)}</span>
+        <span class="t"><b>${esc(r.note || name)}</b><small>${esc(FREQ[r.freq])} · ${r.active ? "prossimo " + esc(fmtDate(r.next_ts, { day: "numeric", month: "short" })) : "in pausa"}</small></span>
+        <span class="a num ${r.type}">${r.type === "in" ? "+" : "−"}${money(r.amount)}</span>
+        <span class="ract"><button class="pill sm" data-rpause="${esc(r.id)}">${r.active ? "Pausa" : "Riprendi"}</button><button class="pill sm danger" data-rdel="${esc(r.id)}">Elimina</button></span>
+      </div>`; }).join("")}</div>`
+    : emptyCard("sync", "Nessun movimento ricorrente", "Quando segni un movimento scegli Ripeti: ogni mese, settimana o anno. L'app lo aggiunge da sola alla scadenza.")}
+    <p class="hint">I movimenti ricorrenti vengono aggiunti quando apri l'app, con la data giusta.</p>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => {
+      const p = e.target.closest("[data-rpause]"), d = e.target.closest("[data-rdel]");
+      if (p) { const r = S.rec[p.dataset.rpause]; let next = r.next_ts; if (!r.active) while (next <= Date.now()) next = advance(next, r.freq); putRec({ ...r, active: !r.active, next_ts: next }); close(); recurringSheet(); }
+      if (d) { const r = { ...S.rec[d.dataset.rdel] }; delRec(r.id); close(); recurringSheet(); toast("Ricorrente eliminato. I movimenti già segnati restano.", () => putRec(r)); }
+    });
+  });
+}
+
+/* ============ budgets ============ */
+function spentThisMonth(cat) {
+  const n = new Date(), m0 = new Date(n.getFullYear(), n.getMonth(), 1).getTime();
+  return Object.values(S.tx).reduce((a, t) => a + (t.type === "out" && t.ts >= m0 && catInfo("out", t.cat)[0] === catInfo("out", cat)[0] ? t.amount : 0), 0);
+}
+function budgetAlert(cat, before, after) {
+  const name = catInfo("out", cat)[0], b = (S.settings.budgets || {})[name];
+  if (!b) return;
+  if (before <= b && after > b) { toast(`Hai superato il budget ${name} di ${money(after - b)}`); mascotReact("squish"); }
+  else if (before < b * .8 && after >= b * .8) { toast(`Hai usato l'${Math.round(after / b * 100)}% del budget ${name}`); mascotReact("wiggle"); }
+}
+function budgetSheet() {
+  const b = S.settings.budgets || {};
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Budget mensili</h3><button class="r" id="bSave">Salva</button></div>
+    <p class="hint" style="margin:0 4px 12px">Un tetto di spesa al mese per categoria. Ti avviso all'80% e quando lo superi. Lascia vuoto per non avere limiti.</p>
+    <div class="list">${CATS.out.map(([n, icon]) => `<label class="cell bud"><span class="ico">${ic(icon, 20)}</span><span class="bname">${esc(n)}</span>
+      <input inputmode="decimal" data-bud="${esc(n)}" placeholder="—" value="${b[n] ? esc(centsToInput(b[n]).replace(/,00$/, "")) : ""}"><span class="beur">€</span></label>`).join("")}</div>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    $("#bSave").onclick = () => {
+      const out = {}; sh.querySelectorAll("[data-bud]").forEach(i => { const v = parseAmt(i.value); if (v) out[i.dataset.bud] = v; });
+      close(); saveSettings({ budgets: out }); toast(Object.keys(out).length ? "Budget salvati" : "Budget rimossi");
+    };
+  });
+}
+
+/* ============ onboarding ============ */
+function needsOnboarding() {
+  if (S.settings.onboarded || Object.keys(S.tx).length) return false;
+  return S.mode === "local" || firstSyncDone;
+}
+let obStep = 0, obData = {};
+function renderOnboarding() {
+  const steps = [
+    () => `<div class="ob-hero">${mascot()}</div>
+      <h1>Ciao, sono Soldino</h1>
+      <p>Ti aiuto a segnare entrate e uscite in due tocchi e a mettere da parte i soldi per quello che vuoi comprarti.</p>
+      <button class="save" data-ob="next">Iniziamo</button>`,
+    () => `<div class="ob-hero">${mascot()}</div>
+      <h1>Quanto hai adesso?</h1>
+      <p>Lo segno come saldo di partenza. Puoi sempre cambiarlo dopo dai movimenti.</p>
+      <div class="field ob-amt"><input id="obAmt" inputmode="decimal" placeholder="0,00" value="${esc(obData.amt || "")}"><span class="beur">€</span></div>
+      <button class="save" data-ob="next">Avanti</button><button class="alt" data-ob="skip">Parto da zero</button>`,
+    () => `<div class="ob-hero">${mascot()}</div>
+      <h1>Cosa vuoi comprarti?</h1>
+      <p>Il tuo primo obiettivo. Tutto quello che risparmi lo fa avanzare.</p>
+      <div class="fields"><div class="field"><input id="obGoal" placeholder="Es. AirPods Pro" maxlength="60" value="${esc(obData.goal || "")}"></div>
+      <div class="field"><label for="obPrice">Prezzo €</label><input id="obPrice" inputmode="decimal" placeholder="0,00" style="text-align:right" value="${esc(obData.price || "")}"></div></div>
+      <button class="save" data-ob="done">Fatto</button><button class="alt" data-ob="finish">Più tardi</button>`
+  ];
+  $("#app").innerHTML = `<div class="auth onboarding"><div class="box">${steps[obStep]()}
+    <div class="dots">${steps.map((_, k) => `<i class="${k === obStep ? "on" : ""}"></i>`).join("")}</div></div></div>`;
+  const amt = $("#obAmt"); if (amt) setTimeout(() => amt.focus(), 200);
+}
+function onboardingAction(a) {
+  if ($("#obAmt")) obData.amt = $("#obAmt").value;
+  if ($("#obGoal")) { obData.goal = $("#obGoal").value; obData.price = $("#obPrice").value; }
+  if (a === "next" || a === "skip") { if (a === "skip") obData.amt = ""; obStep++; renderOnboarding(); mascotReact("jump"); return; }
+  if (a === "done" && obData.goal?.trim() && !parseAmt(obData.price)) { toast("Scrivi anche il prezzo, per esempio 279"); return; }
+  const start = parseAmt(obData.amt);
+  if (start) putTx({ id: uuid(), type: "in", amount: start, cat: "Altro", note: "Saldo iniziale", ts: Date.now() });
+  if (a === "done" && obData.goal?.trim()) putGoal({ id: uuid(), name: obData.goal.trim(), price: parseAmt(obData.price), img: null, url: null, deadline: null, done: false, done_at: null, created_at: Date.now() });
+  obStep = 0; obData = {};
+  saveSettings({ onboarded: true });
+  setTab("home"); mascotReact("jump");
+}
+
+/* ============ account ============ */
+function passwordSheet(recovery) {
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${recovery ? "Nuova password" : "Cambia password"}</h3><span></span></div>
+    <div class="fields"><div class="field"><input id="np1" type="password" autocomplete="new-password" placeholder="Nuova password (almeno 6 caratteri)" minlength="6"></div>
+    <div class="field"><input id="np2" type="password" autocomplete="new-password" placeholder="Ripeti la nuova password"></div></div>
+    <p class="hint" id="npErr" style="color:var(--neg)"></p>
+    <button class="save" id="npGo">Salva password</button>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    $("#npGo").onclick = async () => {
+      const a = $("#np1").value, b = $("#np2").value;
+      if (a.length < 6) { $("#npErr").textContent = "La password deve avere almeno 6 caratteri."; return; }
+      if (a !== b) { $("#npErr").textContent = "Le due password non coincidono."; return; }
+      $("#npGo").disabled = true;
+      const { error } = await sb.auth.updateUser({ password: a });
+      $("#npGo").disabled = false;
+      if (error) { $("#npErr").textContent = italianAuthError(error); return; }
+      close(); toast("Password aggiornata");
+    };
+  });
+}
+function deleteAccountSheet() {
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Elimina account</h3><span></span></div>
+    <div class="confirm"><p>Elimino il tuo account e <b>tutti</b> i tuoi dati: movimenti, obiettivi, budget e ricorrenti. Non si può annullare.</p>
+    <p>Se vuoi tenerne una copia, prima usa <b>Esporta backup</b>.</p>
+    <div class="field"><input id="delWord" placeholder="Scrivi ELIMINA per confermare" autocapitalize="characters"></div></div>
+    <p class="hint" id="delErr" style="color:var(--neg)"></p>
+    <button class="save" id="delGo" style="background:var(--neg);color:#fff" disabled>Elimina definitivamente</button>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    $("#delWord").oninput = () => { $("#delGo").disabled = $("#delWord").value.trim().toUpperCase() !== "ELIMINA"; };
+    $("#delGo").onclick = async () => {
+      $("#delGo").disabled = true;
+      const { error } = await sb.rpc("delete_my_account");
+      if (error) { $("#delGo").disabled = false; $("#delErr").textContent = /function|schema/i.test(error.message) ? "Prima esegui l'aggiornamento SQL su Supabase (aggiornamento-2.sql)." : error.message; return; }
+      close();
+      try { localStorage.removeItem(LS); } catch {}
+      S = { tx: {}, goals: {}, rec: {}, settings: {}, pending: [], mode: "cloud", lastSync: 0 };
+      await sb.auth.signOut().catch(() => {});
+      toast("Account eliminato");
+    };
+  });
+}
+
 /* ============ events ============ */
 document.addEventListener("click", e => {
+  const ob = e.target.closest("[data-ob]"); if (ob) { onboardingAction(ob.dataset.ob); return; }
+  if (e.target.closest("[data-budgets]") && !e.target.closest(".sheet")) { budgetSheet(); return; }
   const mb0 = e.target.closest("[data-mascot]");
   if (mb0) { mascotReact("jump"); mascotSay(mb0); return; }
   const rb = e.target.closest("[data-range]"), mb = e.target.closest("[data-month]");
@@ -1003,6 +1229,10 @@ document.addEventListener("click", e => {
     else if (a === "logout") { sb.auth.signOut(); }
     else if (a === "setup") { cfg.supabaseUrl ? startCloud() : renderSetup(); }
     else if (a === "export") exportBackup();
+    else if (a === "budgets") budgetSheet();
+    else if (a === "recurring") recurringSheet();
+    else if (a === "password") passwordSheet(false);
+    else if (a === "delete") deleteAccountSheet();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });
@@ -1037,7 +1267,7 @@ let splashOn = !!document.getElementById("splash"), authHeld = false;
 
 /* ============ boot ============ */
 if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
-else render();
+else { render(); runRecurring(); }
 snapshotReached();
 navigator.storage?.persist?.().catch(() => {});
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
