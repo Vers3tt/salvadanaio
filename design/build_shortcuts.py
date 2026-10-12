@@ -23,8 +23,43 @@ def dict_items(pairs):  # [(key, value-field)] -> WFDictionaryFieldValue
             "WFSerializationType": "WFDictionaryFieldValue"}
 def act(ident, params): return {"WFWorkflowActionIdentifier": ident, "WFWorkflowActionParameters": params}
 
-def token_action(tid):
-    return act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": text(TOKEN) if TOKEN else ""})
+CODE_PATH = "Salvadanaio/codice.txt"   # in iCloud Drive → Comandi Rapidi, condiviso da tutti i comandi
+def named(name):  # text field made of a named variable
+    return {"Value": {"string": "\uFFFC", "attachmentsByRange": {"{0, 1}": {"Type": "Variable", "VariableName": name}}},
+            "WFSerializationType": "WFTextTokenString"}
+
+def token_action(_unused=None):
+    """Legge il codice salvato; la prima volta lo chiede (precompilato con gli appunti) e lo salva."""
+    if TOKEN:
+        return [act("is.workflow.actions.setvariable", {"WFVariableName": "Codice", "WFInput": {"Value": {"string": TOKEN, "attachmentsByRange": {}}, "WFSerializationType": "WFTextTokenString"}})]
+    fid, cb, ask, g = U(), U(), U(), U()
+    return [
+        act("is.workflow.actions.documentpicker.open", {"UUID": fid, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": False, "WFShowFilePicker": False}),
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 101,
+            "WFInput": {"Type": "Variable", "Variable": var_attach(fid, "File")}}),
+        act("is.workflow.actions.getclipboard", {"UUID": cb}),
+        act("is.workflow.actions.ask", {"UUID": ask, "WFInputType": "Text",
+            "WFAskActionPrompt": "Codice personale di Salvadanaio (app → Altro → Siri e widget → Copia codice)",
+            "WFAskActionDefaultAnswer": var_text(cb, "Clipboard")}),
+        act("is.workflow.actions.documentpicker.save", {"WFInput": var_attach(ask, "Provided Input"), "WFAskWhereToSave": False,
+            "WFFileDestinationPath": CODE_PATH, "WFSaveFileOverwrite": True}),
+        act("is.workflow.actions.setvariable", {"WFVariableName": "Codice", "WFInput": var_attach(ask, "Provided Input")}),
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 1}),
+        act("is.workflow.actions.setvariable", {"WFVariableName": "Codice", "WFInput": var_attach(fid, "File")}),
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 2, "UUID": U()}),
+    ]
+
+def forget_bad_code(msg_uuid):
+    """Se il server dice che il codice non vale più, cancella quello salvato: la prossima volta lo richiede."""
+    if TOKEN: return []
+    g, fid = U(), U()
+    return [
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 99,
+            "WFConditionalActionString": "Codice non valido", "WFInput": {"Type": "Variable", "Variable": var_attach(msg_uuid, "Dictionary Value")}}),
+        act("is.workflow.actions.documentpicker.open", {"UUID": fid, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": False, "WFShowFilePicker": False}),
+        act("is.workflow.actions.file.delete", {"WFInput": var_attach(fid, "File"), "WFDeleteFileConfirmDeletion": False}),
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 2, "UUID": U()}),
+    ]
 
 def request(rid, fn, body):
     return act("is.workflow.actions.downloadurl", {
@@ -35,33 +70,33 @@ def request(rid, fn, body):
 def show_message(rid):
     vid = U()
     return [act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFDictionaryKey": "messaggio"}),
+            *forget_bad_code(vid),
             act("is.workflow.actions.showresult", {"Text": var_text(vid, "Dictionary Value")})]
 
 def movement(kind):
     tid, nid, lid, cid, rid = U(), U(), U(), U(), U()
     cats = CATS_OUT if kind == "out" else CATS_IN
     actions = [
-        token_action(tid),
+        *token_action(),
         act("is.workflow.actions.ask", {"UUID": nid, "WFInputType": "Number",
             "WFAskActionPrompt": "Quanto hai speso?" if kind == "out" else "Quanto è entrato?"}),
         act("is.workflow.actions.list", {"UUID": lid, "WFItems": cats}),
         act("is.workflow.actions.choosefromlist", {"UUID": cid, "WFInput": var_attach(lid, "List"),
             "WFChooseFromListActionPrompt": "Categoria"}),
-        request(rid, "quick_add", [("p_token", var_text(tid, "Text")), ("p_type", text(kind)),
+        request(rid, "quick_add", [("p_token", named("Codice")), ("p_type", text(kind)),
                                    ("p_amount", var_text(nid, "Provided Input")), ("p_cat", var_text(cid, "Chosen Item"))]),
         *show_message(rid)]
     return actions
 
 def balance():
     tid, rid = U(), U()
-    return [token_action(tid), request(rid, "quick_balance", [("p_token", var_text(tid, "Text"))]), *show_message(rid)]
+    return [*token_action(), request(rid, "quick_balance", [("p_token", named("Codice"))]), *show_message(rid)]
 
 def workflow(actions, glyph, color):
     return {
         "WFWorkflowClientVersion": "2605.0.5", "WFWorkflowMinimumClientVersion": 900, "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": color, "WFWorkflowIconGlyphNumber": glyph},
-        "WFWorkflowImportQuestions": [] if TOKEN else [{"ActionIndex": 0, "Category": "Parameter", "DefaultValue": "", "ParameterKey": "WFTextActionText",
-            "Text": "Incolla il tuo codice personale: lo trovi nell'app Salvadanaio in Altro → Siri e widget."}],
+        "WFWorkflowImportQuestions": [],
         "WFWorkflowTypes": ["NCWidget", "WatchKit"], "WFWorkflowInputContentItemClasses": [],
         "WFWorkflowHasShortcutInputVariables": False, "WFWorkflowHasOutputFallback": False,
         "WFQuickActionSurfaces": [], "WFWorkflowOutputContentItemClasses": [],

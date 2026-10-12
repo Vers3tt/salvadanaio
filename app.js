@@ -1259,7 +1259,7 @@ function siriSheet() {
     <div class="group-h"><span>2 · Aggiungi i comandi</span></div>
     <div class="list">${SHORTCUTS.map(([n, d, i]) => `<a class="row" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">
       <span class="ico">${ic(i, 20)}</span><span class="t"><b>${esc(n)}</b><small>${esc(d)}</small></span><span class="a" style="color:var(--ink2)">${ic("external", 18)}</span></a>`).join("")}</div>
-    <p class="hint">Tocca un comando per scaricarlo, poi aprilo: su Mac con doppio clic dal Finder (cartella Download), su iPhone dall'app File. Si apre Comandi Rapidi: tocca <b>Aggiungi comando</b> e incolla il codice quando te lo chiede. Basta farlo su un solo dispositivo: con iCloud i comandi arrivano anche sugli altri.</p>
+    <p class="hint">Tocca un comando per scaricarlo e aprilo (su Mac doppio clic dalla cartella Download, su iPhone dall'app File): in Comandi Rapidi tocca <b>Aggiungi comando</b>. La <b>prima volta che lo avvii</b> ti chiede il codice, già compilato se l'hai copiato: confermalo e non te lo chiederà più, nemmeno negli altri comandi e sugli altri dispositivi con iCloud.</p>
 
     <div class="group-h"><span>3 · Usali</span></div>
     <div class="card howto">
@@ -1282,7 +1282,7 @@ function siriSheet() {
       $("#qBox").innerHTML = `<p>Ecco il tuo codice. <b>Copialo adesso</b>: per sicurezza non lo salvo e non potrò mostrartelo di nuovo. Se lo perdi, generane uno nuovo.</p>
         <div class="qtoken num" id="qTok">${esc(token)}</div>
         <div class="btnrow"><button class="save" id="qCopy">Copia codice</button><button class="save ghost" id="qNew">Genera di nuovo</button></div>
-        <p class="hint">Generandone uno nuovo, quello vecchio smette di funzionare: andrà incollato di nuovo nei comandi.</p>`;
+        <p class="hint">Se ne generi uno nuovo, quello vecchio smette di funzionare: al prossimo avvio i comandi te lo richiedono da soli.</p>`;
       $("#qCopy").onclick = async () => {
         try { await navigator.clipboard.writeText(token); toast("Codice copiato"); }
         catch { const r = document.createRange(); r.selectNodeContents($("#qTok")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selezionato: copialo con Copia"); }
