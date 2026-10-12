@@ -6,8 +6,14 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uuid = () => crypto.randomUUID ? crypto.randomUUID()
   : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
-const EUR = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
-const money = c => EUR.format((c || 0) / 100);
+// Italian format with grouping also for 4 digits (1.034,00 €), which Intl it-IT omits
+function fmt(c) {
+  const n = Math.abs(Math.round(c || 0)), int = Math.floor(n / 100), dec = String(n % 100).padStart(2, "0");
+  return { sign: c < 0 ? "−" : "", int: String(int).replace(/\B(?=(\d{3})+(?!\d))/g, "."), dec };
+}
+const money = c => { const f = fmt(c); return `${f.sign}${f.int},${f.dec}\u00a0€`; };
+// price-tag style: cents smaller and raised, like a shelf label
+const tag = c => { const f = fmt(c); return `${f.sign}${f.int}<span class="cents">,${f.dec}</span><span class="cur">€</span>`; };
 const parseAmt = s => {
   s = String(s || "").trim().replace(/\s|€/g, "");
   if (!s) return 0;
@@ -18,27 +24,44 @@ const parseAmt = s => {
 const centsToInput = c => (c / 100).toFixed(2).replace(".", ",");
 const DAY = 864e5;
 
-const CATS = {
-  out: [["Spesa","🛒","#FF9500"],["Casa","🏠","#5856D6"],["Bollette","💡","#FFCC00"],["Trasporti","🚗","#007AFF"],["Svago","🎮","#AF52DE"],["Ristoranti","🍕","#FF3B30"],["Shopping","🛍️","#FF2D55"],["Salute","💊","#34C759"],["Altro","•","#8E8E93"]],
-  in:  [["Stipendio","💼","#34C759"],["Paghetta","🪙","#FF9500"],["Regalo","🎁","#FF2D55"],["Vendita","🏷️","#007AFF"],["Lavoretto","🔧","#5856D6"],["Altro","•","#8E8E93"]]
+const P = {
+  cart: '<circle cx="8" cy="20.5" r="1.2"/><circle cx="18" cy="20.5" r="1.2"/><path d="M2.5 3h2.2l2.4 11.6a1.6 1.6 0 0 0 1.6 1.3h9.1a1.6 1.6 0 0 0 1.6-1.2L21 7H5.6"/>',
+  home: '<path d="M3.5 10.2 12 3.5l8.5 6.7"/><path d="M5.5 9v10.5a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9"/>',
+  bolt: '<path d="M13 2.5 4.5 13.5H12l-1 8 8.5-11H12z"/>',
+  car: '<path d="M4 16.5V12l2-5.2A1.5 1.5 0 0 1 7.4 6h9.2a1.5 1.5 0 0 1 1.4.8L20 12v4.5"/><path d="M3.5 12h17v4.5h-17z"/><path d="M6.5 16.5V19M17.5 16.5V19"/><circle cx="7.5" cy="14.2" r=".6"/><circle cx="16.5" cy="14.2" r=".6"/>',
+  ticket: '<path d="M3 8.5a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v1.5a2 2 0 0 0 0 4v1.5a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2V14a2 2 0 0 0 0-4z"/><path d="M14 7v1.5M14 11.25v1.5M14 15.5V17"/>',
+  fork: '<path d="M6 2.5v6.5a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V2.5M8 11v10.5"/><path d="M18 21.5V2.5c-2.2 0-4 2.5-4 6v5h4"/>',
+  bag: '<path d="M5 7.5h14l-1 12.5a1.5 1.5 0 0 1-1.5 1.4h-9A1.5 1.5 0 0 1 6 20z"/><path d="M9 10V6.5a3 3 0 0 1 6 0V10"/>',
+  heart: '<path d="M12 20.5s-8-4.6-8-10.4A4.4 4.4 0 0 1 12 7.6a4.4 4.4 0 0 1 8 2.5c0 5.8-8 10.4-8 10.4z"/>',
+  dots: '<circle cx="5.5" cy="12" r="1.1"/><circle cx="12" cy="12" r="1.1"/><circle cx="18.5" cy="12" r="1.1"/>',
+  case: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12.5h18"/>',
+  coins: '<ellipse cx="9" cy="7" rx="5.5" ry="2.5"/><path d="M3.5 7v4c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5V7"/><path d="M9.5 16.4c.9.4 2 .6 3.3.6 3 0 5.5-1.1 5.5-2.5v-4c0-1.2-1.8-2.2-4.3-2.4"/><path d="M8.5 13.4v1.1c0 1.4 2.5 2.5 5.5 2.5"/>',
+  gift: '<rect x="3.5" y="8" width="17" height="4" rx="1"/><path d="M5 12v7.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V12M12 8v12.5"/><path d="M12 8S10.5 3.5 8 3.5a2.2 2.2 0 0 0 0 4.5M12 8s1.5-4.5 4-4.5a2.2 2.2 0 0 1 0 4.5"/>',
+  label: '<path d="M3 4.5v6.3a1.5 1.5 0 0 0 .44 1.06l8.2 8.2a1.5 1.5 0 0 0 2.12 0l6.3-6.3a1.5 1.5 0 0 0 0-2.12l-8.2-8.2A1.5 1.5 0 0 0 10.8 3H4.5A1.5 1.5 0 0 0 3 4.5z"/><circle cx="7.5" cy="7.5" r="1.2"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 0 1 5.3-3.8l-2.6 2.6.4 2.3 2.3.4 2.6-2.6a4 4 0 0 1-5.3 5.2L8.5 19a2.1 2.1 0 0 1-3-3l8.3-8.7"/>',
+  flag: '<path d="M5 21V3.5"/><path d="M5 4h12.5l-2.5 4.25L17.5 12.5H5"/>',
+  arrowIn: '<path d="M17 7 7 17M7 8.5V17h8.5"/>',
+  arrowOut: '<path d="M7 17 17 7M8.5 7H17v8.5"/>',
+  receipt: '<path d="M5.5 2.5v19l2.2-1.4 2.1 1.4 2.2-1.4 2.2 1.4 2.1-1.4 2.2 1.4v-19l-2.2 1.4-2.1-1.4-2.2 1.4-2.2-1.4-2.1 1.4z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
+  sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  paste: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h4"/>',
+  photo: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m21 15.5-4.5-4.5L7 20"/>',
+  cloudOff: '<path d="m3 3 18 18"/><path d="M8.2 6.2A6 6 0 0 1 16.4 10h.6a4 4 0 0 1 3.2 6.4M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
+  sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M4 3.5v5h5M20 20.5v-5h-5"/>'
 };
-const CAT_GOAL = ["Obiettivo","🎯","#5E5CE6"];
-function catInfo(type, name) {
-  if (name === "Obiettivo") return CAT_GOAL;
-  return CATS[type].find(c => c[0] === name) || [name || (type === "in" ? "Entrata" : "Uscita"), type === "in" ? "+" : "−", "#8E8E93"];
-}
-const icoStyle = color => `background:${color}26;color:${color}`;
+const ic = (name, size = 22) => `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name]}</svg>`;
 
-const ICONS = {
-  home: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.3 3.3a1 1 0 0 1 1.4 0l8 7.6a1 1 0 0 1-.7 1.7H19v7a1.4 1.4 0 0 1-1.4 1.4h-3.2v-5.2a.8.8 0 0 0-.8-.8h-3.2a.8.8 0 0 0-.8.8V21H6.4A1.4 1.4 0 0 1 5 19.6v-7H4a1 1 0 0 1-.7-1.7z"/></svg>',
-  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>',
-  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>',
-  gear: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.6 2.5l.4 2.3c.6.2 1.2.5 1.7.9l2.2-.8 1.6 2.8-1.8 1.5a7 7 0 0 1 0 2l1.8 1.5-1.6 2.8-2.2-.8c-.5.4-1.1.7-1.7.9l-.4 2.3h-3.2l-.4-2.3a7 7 0 0 1-1.7-.9l-2.2.8-1.6-2.8 1.8-1.5a7 7 0 0 1 0-2L4.5 7.7l1.6-2.8 2.2.8c.5-.4 1.1-.7 1.7-.9l.4-2.3zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" transform="translate(0 1.5)"/></svg>',
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
-  paste: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4.5V3h6v1.5M9 10h6M9 14h4"/></svg>',
-  photo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg>'
+const CATS = {
+  out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
+  in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Altro","dots"]]
 };
+function catInfo(type, name) {
+  if (name === "Obiettivo") return ["Obiettivo", "flag"];
+  return CATS[type].find(c => c[0] === name) || [type === "in" ? "Entrata" : "Uscita", type === "in" ? "arrowIn" : "arrowOut"];
+}
 
 /* ============ state & persistence ============ */
 const LS = "salvadanaio.v2";
@@ -160,8 +183,8 @@ function render() {
   const screens = { home: homeScreen, mov: movScreen, goals: goalsScreen, more: moreScreen };
   $("#app").innerHTML = `<main class="screen">${screens[tab]()}</main>
   <div class="tabbar"><nav>
-    ${[["home","Home",ICONS.home],["mov","Movimenti",ICONS.list],["goals","Obiettivi",ICONS.target],["more","Altro",ICONS.gear]]
-      .map(([k, l, i]) => `<button data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${i}<span>${l}</span></button>`).join("")}
+    ${[["home","Home","home"],["mov","Movimenti","receipt"],["goals","Obiettivi","flag"],["more","Altro","sliders"]]
+      .map(([k, l, i]) => `<button data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${ic(i, 24)}<span>${l}</span></button>`).join("")}
   </nav></div>`;
   syncBadge();
 }
@@ -171,41 +194,46 @@ function dateTitle() {
   const s = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+const monthName = () => new Date().toLocaleDateString("it-IT", { month: "long" }).replace(/^./, c => c.toUpperCase());
+
 function homeScreen() {
   const next = D.active.find(g => g.price > D.total);
   const ready = D.active.filter(g => g.price <= D.total).length;
   return `
-  <header class="nav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div>
-    ${S.mode === "cloud" ? `<span class="hint" id="syncBadge"></span>` : ""}</header>
+  <header class="nav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div></header>
+  <div id="syncBadge"></div>
   <section class="card balance">
     <span class="lbl">Saldo</span>
-    <span class="big num${D.total < 0 ? " neg" : ""}">${money(D.total)}</span>
-    <div class="split">${next ? `<span>Prossimo obiettivo: <b>${esc(next.name)}</b>, mancano <b class="num">${money(next.price - D.total)}</b></span>`
-      : ready ? `<span><b>${ready === 1 ? "1 obiettivo raggiunto" : ready + " obiettivi raggiunti"}</b></span>` : `<span>Aggiungi un obiettivo per vedere quanto ti manca</span>`}</div>
-    <div class="spark">${spark()}</div>
+    <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
+    <p class="next">${next ? `Mancano <b class="num">${money(next.price - D.total)}</b> per ${esc(next.name)}`
+      : ready ? `${ready === 1 ? "Hai abbastanza per un obiettivo" : `Hai abbastanza per ${ready} obiettivi`}` : `Aggiungi un obiettivo per vedere quanto ti manca`}</p>
+    ${spark()}
   </section>
   <div class="actions">
-    <button class="act out" data-new="out"><i>−</i>Uscita</button>
-    <button class="act in" data-new="in"><i>+</i>Entrata</button>
+    <button class="act out" data-new="out">${ic("minus", 20)}Uscita</button>
+    <button class="act in" data-new="in">${ic("plus", 20)}Entrata</button>
   </div>
   <section class="section">
-    <div class="sec-h"><h2>${esc(new Date().toLocaleDateString("it-IT", { month: "long" }).replace(/^./, c => c.toUpperCase()))}</h2></div>
+    <div class="sec-h"><h2>${esc(monthName())}</h2></div>
     <div class="card month">
-      <div><span>Entrate</span><b class="num pos">${money(D.mIn)}</b></div>
-      <div><span>Uscite</span><b class="num neg">${money(D.mOut)}</b></div>
-      <div><span>Risparmiato</span><b class="num">${money(D.mIn - D.mOut)}</b></div>
+      <div><span>Entrate</span><b class="num">${money(D.mIn)}</b></div>
+      <div><span>Uscite</span><b class="num">${money(D.mOut)}</b></div>
+      <div><span>Risparmio</span><b class="num${D.mIn - D.mOut < 0 ? " neg" : " pos"}">${money(D.mIn - D.mOut)}</b></div>
     </div>
   </section>
   <section class="section">
-    <div class="sec-h"><h2>Obiettivi</h2>${D.active.length ? `<button class="link" data-tab="goals">Vedi tutti</button>` : ""}</div>
-    ${D.active.length ? `<div class="goal-strip">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ICONS.plus.replace("<svg", '<svg width="28" height="28"')}Nuovo</button></div>`
-      : `<div class="card empty"><span class="emoji">🎯</span><b>Cosa vuoi comprarti?</b><span>Aggiungi un obiettivo: tutto quello che risparmi lo fa avanzare.</span><button class="save" style="width:auto;padding:11px 20px" data-goal-new>Nuovo obiettivo</button></div>`}
+    <div class="sec-h"><h2>Obiettivi</h2>${D.active.length ? `<button class="link" data-tab="goals">Tutti</button>` : ""}</div>
+    ${D.active.length ? `<div class="goal-strip">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo</span></button></div>`
+      : emptyCard("flag", "Cosa vuoi comprarti?", "Aggiungi un obiettivo con nome e prezzo. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
   </section>
   <section class="section">
-    <div class="sec-h"><h2>Ultimi movimenti</h2>${D.txs.length > 5 ? `<button class="link" data-tab="mov">Vedi tutti</button>` : ""}</div>
+    <div class="sec-h"><h2>Ultimi movimenti</h2>${D.txs.length > 5 ? `<button class="link" data-tab="mov">Tutti</button>` : ""}</div>
     ${D.txs.length ? `<div class="list">${D.txs.slice(0, 5).map(txRow).join("")}</div>`
-      : `<div class="card empty"><span class="emoji">🪙</span><b>Nessun movimento</b><span>Tocca Entrata per segnare i soldi che hai adesso.</span></div>`}
+      : emptyCard("receipt", "Nessun movimento", "Tocca Entrata e segna i soldi che hai adesso: diventa il tuo saldo di partenza.")}
   </section>`;
+}
+function emptyCard(icon, title, text, action = "") {
+  return `<div class="card empty"><span class="empty-ico">${ic(icon, 26)}</span><b>${esc(title)}</b><span>${esc(text)}</span>${action}</div>`;
 }
 
 function spark() {
@@ -220,21 +248,21 @@ function spark() {
     while (i < asc.length && asc[i].ts <= dEnd) { bal += asc[i].type === "in" ? asc[i].amount : -asc[i].amount; i++; }
     pts.push(bal);
   }
-  const W = 400, H = 56, min = Math.min(...pts), max = Math.max(...pts);
-  const x = k => k / (days - 1) * W, y = v => H - 6 - (v - min) / (max - min || 1) * (H - 14);
+  const W = 400, H = 48, min = Math.min(...pts), max = Math.max(...pts);
+  const x = k => k / (days - 1) * W, y = v => H - 4 - (v - min) / (max - min || 1) * (H - 10);
   const line = pts.map((v, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--tint)" stop-opacity=".28"/><stop offset="1" stop-color="var(--tint)" stop-opacity="0"/></linearGradient></defs>
-    <path d="${line} L${W} ${H} L0 ${H}Z" fill="url(#sg)"/>
-    <path d="${line}" fill="none" stroke="var(--tint)" stroke-width="2.2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+  const from = new Date(start).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+  return `<div class="spark"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${line}" fill="none" stroke="var(--ink)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
+    <div class="spark-x"><span>${esc(from)}</span><span>oggi</span></div></div>`;
 }
 
 function txRow(t) {
-  const [name, emo, color] = catInfo(t.type, t.cat);
+  const [name, icon] = catInfo(t.type, t.cat);
   const d = new Date(t.ts);
-  const when = d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  const when = d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + ", " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
   return `<button class="row" data-tx="${esc(t.id)}">
-    <span class="ico" style="${icoStyle(color)}">${esc(emo)}</span>
+    <span class="ico">${ic(icon, 20)}</span>
     <span class="t"><b>${esc(t.note || name)}</b><small>${esc(t.note ? name + " · " + when : when)}</small></span>
     <span class="a num ${t.type}">${t.type === "in" ? "+" : "−"}${money(t.amount)}</span>
   </button>`;
@@ -249,58 +277,61 @@ function movScreen() {
     const g = groups[groups.length - 1]; g.items.push(t); g.net += t.type === "in" ? t.amount : -t.amount;
   }
   return `
-  <header class="nav"><div><h1>Movimenti</h1></div><button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ICONS.plus}</button></header>
+  <header class="nav"><div><h1>Movimenti</h1></div><button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></header>
   <div class="seg" role="group">
     ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
   </div>
   ${groups.length ? groups.map(g => `
     <div class="group-h"><span>${esc(g.d.toLocaleDateString("it-IT", { month: "long", year: "numeric" }))}</span><span class="num">${g.net >= 0 ? "+" : "−"}${money(Math.abs(g.net))}</span></div>
     <div class="list">${g.items.map(txRow).join("")}</div>`).join("")
-    : `<div class="card empty"><span class="emoji">🧾</span><b>Niente da mostrare</b><span>I movimenti che segni compaiono qui, divisi per mese.</span></div>`}`;
+    : emptyCard("receipt", "Niente da mostrare", "I movimenti che segni compaiono qui, divisi per mese.")}`;
 }
 
+function goalThumb(g) {
+  return g.img ? `<img src="${esc(g.img)}" alt="" loading="lazy">` : `<span class="ph">${ic("flag", 30)}</span>`;
+}
 function goalCard(g) {
   const pct = goalPct(g), ok = pct >= 100;
-  return `<button class="gcard" data-goal="${esc(g.id)}">
-    <div class="gimg">${g.img ? `<img src="${esc(g.img)}" alt="" loading="lazy">` : `<span class="ph">${esc(g.name.trim().charAt(0).toUpperCase())}</span>`}
-      <span class="pct${ok ? " ok" : ""}">${ok ? "✓" : Math.floor(pct) + "%"}</span></div>
+  return `<button class="gcard${ok ? " ok" : ""}" data-goal="${esc(g.id)}">
+    <div class="gimg">${goalThumb(g)}</div>
     <b>${esc(g.name)}</b>
-    <div class="prog${ok ? " ok" : ""}"><i style="width:${pct}%"></i></div>
-    <small class="num">${ok ? "Pronto da comprare" : money(g.price)}</small>
+    <div class="prog"><i style="width:${pct}%"></i></div>
+    <div class="gmeta"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><span class="num">${money(g.price)}</span></div>
   </button>`;
 }
 function goalsScreen() {
   return `
-  <header class="nav"><div><h1>Obiettivi</h1></div><button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ICONS.plus}</button></header>
-  ${D.active.length ? `<div class="goal-grid">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>Nuovo obiettivo</button></div>
-    <p class="hint">Tutto il tuo saldo (${money(D.total)}) conta per ogni obiettivo. Quando ne compri uno, il saldo scende e gli altri si aggiornano.</p>`
-  : `<div class="card empty"><span class="emoji">🎯</span><b>Nessun obiettivo</b><span>Scrivi cosa vuoi comprare e quanto costa. Tutto quello che risparmi lo fa avanzare.</span><button class="save" style="width:auto;padding:11px 20px" data-goal-new>Nuovo obiettivo</button></div>`}
+  <header class="nav"><div><h1>Obiettivi</h1></div><button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ic("plus", 20)}</button></header>
+  ${D.active.length ? `<div class="goal-grid">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo obiettivo</span></button></div>
+    <p class="hint">Ogni obiettivo si confronta con tutto il saldo (${money(D.total)}). Quando ne compri uno il saldo scende e gli altri si aggiornano.</p>`
+  : emptyCard("flag", "Nessun obiettivo", "Scrivi cosa vuoi comprare e quanto costa. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
   ${D.done.length ? `<div class="group-h" style="margin-top:28px"><span>Già comprati</span><span>${D.done.length}</span></div>
     <div class="list">${D.done.map(g => `<button class="row" data-goal="${esc(g.id)}">
-      <span class="ico" style="background:var(--tile);overflow:hidden">${g.img ? `<img src="${esc(g.img)}" alt="" style="width:100%;height:100%;object-fit:contain;padding:3px">` : "🎯"}</span>
+      <span class="ico thumb">${g.img ? `<img src="${esc(g.img)}" alt="">` : ic("flag", 20)}</span>
       <span class="t"><b>${esc(g.name)}</b><small>${g.done_at ? esc(new Date(g.done_at).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })) : ""}</small></span>
       <span class="a num">${money(g.price)}</span></button>`).join("")}</div>` : ""}`;
 }
 
 function moreScreen() {
   const cloud = S.mode === "cloud";
+  const last = S.lastSync ? new Date(S.lastSync).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
   return `
   <header class="nav"><div><h1>Altro</h1></div></header>
-  <div class="group-h"><span>Sincronizzazione</span></div>
+  <div class="group-h"><span>Account</span></div>
   <div class="list">
-    ${cloud ? `<div class="cell"><span>Account</span><span>${esc(session?.user?.email || "")}</span></div>
-      <div class="cell"><span>Stato</span><span id="syncText"></span></div>
-      <button class="cell btn" data-more="sync"><span>Sincronizza adesso</span></button>
+    ${cloud ? `<div class="cell"><span>Email</span><span>${esc(session?.user?.email || "")}</span></div>
+      <div class="cell"><span>Ultimo aggiornamento</span><span id="syncText">${esc(last)}</span></div>
+      <button class="cell btn" data-more="sync"><span>Aggiorna adesso</span></button>
       <button class="cell danger" data-more="logout"><span>Esci</span></button>`
-    : `<div class="cell"><span>Modalità</span><span>Solo questo dispositivo</span></div>
-      <button class="cell btn" data-more="setup"><span>Attiva la sincronizzazione</span></button>`}
+    : `<div class="cell"><span>Dati salvati</span><span>Solo su questo dispositivo</span></div>
+      <button class="cell btn" data-more="setup"><span>Collega Supabase</span></button>`}
   </div>
   <div class="group-h"><span>Backup</span></div>
   <div class="list">
     <button class="cell btn" data-more="export"><span>Esporta backup</span></button>
     <button class="cell btn" data-more="import"><span>Importa backup</span></button>
   </div>
-  <p class="foot">Il backup è un file .json con tutti i movimenti e gli obiettivi, immagini comprese.</p>
+  <p class="foot">Il backup è un file .json con tutti i movimenti e gli obiettivi, foto comprese.</p>
   <div class="group-h"><span>Riepilogo</span></div>
   <div class="list">
     <div class="cell"><span>Movimenti</span><span class="num">${D.txs.length}</span></div>
@@ -310,17 +341,16 @@ function moreScreen() {
   <input type="file" id="importIn" accept="application/json,.json" hidden>`;
 }
 
+// Sync state is shown only when something needs attention: offline or changes still waiting.
 function syncBadge() {
-  const b = $("#syncBadge"), t = $("#syncText");
-  let dot = "off", text = "Solo su questo dispositivo";
-  if (S.mode === "cloud") {
-    if (!navigator.onLine) { dot = "wait"; text = S.pending.length ? `Offline, ${S.pending.length} da inviare` : "Offline"; }
-    else if (syncing || flushing || S.pending.length) { dot = "wait"; text = "Sincronizzo…"; }
-    else { dot = ""; text = "Sincronizzato"; }
-  }
-  const html = `<span class="sync-dot ${dot}"></span>${esc(text)}`;
-  if (b) b.innerHTML = html;
-  if (t) t.innerHTML = html;
+  const b = $("#syncBadge");
+  if (!b || S.mode !== "cloud") { if (b) b.innerHTML = ""; return; }
+  const n = S.pending.length;
+  let html = "";
+  if (!navigator.onLine) html = `${ic("cloudOff", 16)}<span>Offline${n ? ` · ${n === 1 ? "1 modifica" : n + " modifiche"} da inviare` : ""}</span>`;
+  else if (n && !flushing) html = `${ic("sync", 16)}<span>${n === 1 ? "1 modifica" : n + " modifiche"} da inviare</span>`;
+  b.className = html ? "status" : "";
+  b.innerHTML = html;
 }
 
 /* ============ setup / login ============ */
@@ -490,11 +520,11 @@ function txSheet(type, existing) {
     const draw = () => {
       sh.querySelectorAll("[data-t]").forEach(b => b.setAttribute("aria-pressed", b.dataset.t === t));
       const [i, d = ""] = str.split(",");
-      const ip = i ? Number(i).toLocaleString("it-IT") : "0";
+      const ip = i ? String(Number(i)) : "0";
       $("#amtV").className = "v num " + t;
-      $("#amtV").innerHTML = `${t === "in" ? "+" : "−"}${esc(ip)}<span class="${str.includes(",") ? "" : "c"}">,${esc((d + "00").slice(0, 2))}</span> €`;
+      $("#amtV").innerHTML = `${t === "in" ? "+" : "−"}${esc(ip.replace(/\B(?=(\d{3})+(?!\d))/g, "."))}<span class="cents${str.includes(",") ? "" : " ghost"}">,${esc((d + "00").slice(0, 2))}</span><span class="cur">€</span>`;
       if (!CATS[t].some(c => c[0] === cat) && cat !== "Obiettivo") cat = "";
-      $("#cats").innerHTML = CATS[t].map(([n, e, c]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico" style="${icoStyle(c)}">${e}</span>${esc(n)}</button>`).join("");
+      $("#cats").innerHTML = CATS[t].map(([n, icon]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico">${ic(icon, 22)}</span>${esc(n)}</button>`).join("");
       const s = $("#txSave"); s.className = "save " + t; s.disabled = !parseAmt(str);
       s.textContent = existing ? "Salva modifiche" : t === "in" ? "Aggiungi entrata" : "Aggiungi uscita";
     };
@@ -546,7 +576,7 @@ let reachedBefore = new Set();
 function snapshotReached() { reachedBefore = new Set(D.active.filter(g => goalPct(g) >= 100).map(g => g.id)); }
 function celebrateIfReached() {
   const now = D.active.filter(g => goalPct(g) >= 100 && !reachedBefore.has(g.id));
-  if (now.length) { confetti(); toast(`Obiettivo raggiunto: ${now[0].name}! 🎉`); }
+  if (now.length) toast(`Hai abbastanza per ${now[0].name}`);
   snapshotReached();
 }
 
@@ -576,9 +606,9 @@ function goalEditSheet(existing) {
     <div class="pick">
       <div class="gimg" id="gPrev"></div>
       <div class="pick-btns">
-        <a class="pill" id="gSearch" target="_blank" rel="noopener">${ICONS.search}Cerca su Google</a>
-        <button class="pill" type="button" id="gPaste">${ICONS.paste}Incolla foto</button>
-        <button class="pill" type="button" id="gFile">${ICONS.photo}Scegli dalla galleria</button>
+        <a class="pill" id="gSearch" target="_blank" rel="noopener">${ic("search", 18)}Cerca su Google</a>
+        <button class="pill" type="button" id="gPaste">${ic("paste", 18)}Incolla foto</button>
+        <button class="pill" type="button" id="gFile">${ic("photo", 18)}Scegli dalla galleria</button>
       </div>
     </div>
     <div class="pastezone" id="pasteZone" contenteditable="true" data-ph="Oppure tieni premuto qui e scegli Incolla" hidden></div>
@@ -586,7 +616,7 @@ function goalEditSheet(existing) {
   `, (sh, close) => {
     const nameIn = $("#gName"), priceIn = $("#gPrice"), saveB = $("#gSave");
     const drawPrev = () => {
-      $("#gPrev").innerHTML = img ? `<img src="${esc(img)}" alt="">` : `<span class="ph">${esc((nameIn.value.trim()[0] || "?").toUpperCase())}</span>`;
+      $("#gPrev").innerHTML = img ? `<img src="${esc(img)}" alt="">` : `<span class="ph">${ic("photo", 28)}</span>`;
     };
     const validate = () => {
       saveB.disabled = !nameIn.value.trim() || !parseAmt(priceIn.value);
@@ -637,14 +667,6 @@ function goalEditSheet(existing) {
   });
 }
 
-function ringSvg(pct, ok) {
-  const r = 44, c = 2 * Math.PI * r;
-  return `<svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
-    <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--fill)" stroke-width="12"/>
-    <circle cx="60" cy="60" r="${r}" fill="none" stroke="${ok ? "var(--green)" : "var(--tint)"}" stroke-width="12" stroke-linecap="round"
-      stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct / 100)}" transform="rotate(-90 60 60)"/>
-    <text x="60" y="67" text-anchor="middle" font-size="24" font-weight="700" fill="var(--label)" font-family="-apple-system,system-ui,sans-serif">${ok ? "✓" : Math.floor(pct) + "%"}</text></svg>`;
-}
 function goalSheet(id) {
   const g = S.goals[id]; if (!g) return;
   if (g.done) {
@@ -664,9 +686,9 @@ function goalSheet(id) {
   sheet(`
     <div class="sheet-h"><button class="l" id="gEdit">Modifica</button><h3></h3><button class="r" data-x>Fine</button></div>
     <div class="detail">
-      <div class="gimg detail-img">${g.img ? `<img src="${esc(g.img)}" alt="">` : `<span class="ph">${esc(g.name[0].toUpperCase())}</span>`}</div>
+      <div class="gimg detail-img">${goalThumb(g)}</div>
       <h2>${esc(g.name)}</h2><p class="sub num">${money(g.price)}</p>
-      <div class="ring">${ringSvg(pct, ok)}</div>
+      <div class="dprog${ok ? " ok" : ""}"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><div class="prog"><i style="width:${pct}%"></i></div></div>
       <div class="stats3">
         <div><span>Hai</span><b class="num">${money(Math.max(0, D.total))}</b></div>
         <div><span>Prezzo</span><b class="num">${money(g.price)}</b></div>
@@ -692,7 +714,7 @@ function goalSheet(id) {
         const paid = parseAmt($("#paid").value) || g.price;
         const tx = { id: uuid(), type: "out", amount: paid, cat: "Obiettivo", note: g.name, ts: Date.now() };
         close(); putTx(tx); putGoal({ ...g, price: paid, done: true, done_at: Date.now() });
-        confetti(); toast(`Goditi ${g.name}! Uscita di ${money(paid)} segnata`);
+        toast(`${g.name} comprato: uscita di ${money(paid)} segnata`);
         snapshotReached();
       };
     };
@@ -725,22 +747,6 @@ async function importBackup(file) {
     (d.goals || []).forEach(g => { if (g.id && g.price && !S.goals[g.id]) { S.goals[g.id] = g; enqueue({ op: "up", t: "goals", row: pick(g, COLS.goals) }); n++; } });
     commit(); toast(n ? `Importati ${n} elementi` : "Niente di nuovo da importare");
   } catch { toast("Questo file non è un backup del Salvadanaio"); }
-}
-
-/* ============ confetti ============ */
-function confetti() {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const cv = $("#confetti"), ctx = cv.getContext("2d"), dpr = devicePixelRatio || 1;
-  cv.hidden = false; cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.scale(dpr, dpr);
-  const colors = ["#5E5CE6", "#34C759", "#FF9500", "#FF2D55", "#FFCC00", "#007AFF"];
-  const P = Array.from({ length: 140 }, () => ({ x: innerWidth / 2 + (Math.random() - .5) * 80, y: innerHeight * .35, vx: (Math.random() - .5) * 13, vy: -Math.random() * 13 - 4, r: Math.random() * 6.28, vr: (Math.random() - .5) * .3, w: 6 + Math.random() * 6, h: 8 + Math.random() * 8, c: colors[Math.random() * colors.length | 0] }));
-  const t0 = performance.now();
-  (function frame(t) {
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    P.forEach(p => { p.vy += .35; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore(); });
-    if (t - t0 < 2600) requestAnimationFrame(frame); else { ctx.setTransform(1, 0, 0, 1, 0, 0); cv.hidden = true; }
-  })(t0);
 }
 
 /* ============ events ============ */
