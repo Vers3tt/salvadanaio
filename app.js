@@ -77,6 +77,53 @@ function coinSvg(cls, cx, cy, r, detail) {
 const logoInner = () => `<g opacity=".35">${coinSvg("back2", 60, 40, 30)}</g><g opacity=".6">${coinSvg("back1", 55, 45, 30)}</g>${coinSvg("front", 47, 53, 30, true)}`;
 const logoSvg = (size = 84) => `<svg class="logo logo-svg" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">${logoInner()}</svg>`;
 
+/* Mascotte: la moneta-muso, sempre in alto a destra. Fluttua, sbatte le narici,
+   salta quando entrano soldi, si schiaccia quando escono, e se la tocchi ti dice come vai. */
+function mascot() {
+  const r = 30, cx = 50, cy = 46, reed = 2 * Math.PI * r * .94;
+  return `<button class="mascot" data-mascot aria-label="Salvadanaio: tocca per un consiglio">
+    <svg viewBox="16 6 68 90" aria-hidden="true">
+      <ellipse class="m-shadow" cx="50" cy="90" rx="22" ry="4.5" fill="var(--ink)" opacity=".14"/>
+      <g class="m-float"><g class="m-react">
+        <circle cx="${cx}" cy="${cy}" r="${r}" fill="#162448"/>
+        <circle cx="${cx}" cy="${cy}" r="${r * .94}" fill="none" stroke="#46609C" stroke-width="${r * .08}" stroke-dasharray="${reed / 72 * .35} ${reed / 72 * .65}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r * .84}" fill="none" stroke="#46609C" stroke-width="${r * .045}"/>
+        <path d="M${cx - r * .62} ${cy - r * .5}A${r * .74} ${r * .74} 0 0 1 ${cx - r * .25} ${cy - r * .7}" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="${r * .05}" stroke-linecap="round"/>
+        <g class="m-snout">
+          <ellipse cx="${cx}" cy="${cy + r * .06}" rx="${r * .56}" ry="${r * .4}" fill="#26386A"/>
+          <g class="m-nos" fill="#fff"><ellipse cx="${cx - r * .2}" cy="${cy + r * .06}" rx="${r * .12}" ry="${r * .22}"/><ellipse cx="${cx + r * .2}" cy="${cy + r * .06}" rx="${r * .12}" ry="${r * .22}"/></g>
+        </g>
+      </g></g>
+    </svg></button>`;
+}
+let pendingReaction = null;
+function mascotReact(kind) {
+  const go = () => document.querySelectorAll(".mascot").forEach(m => {
+    m.classList.remove("jump", "squish", "wiggle"); void m.offsetWidth; m.classList.add(kind);
+    setTimeout(() => m.classList.remove(kind), 900);
+  });
+  setTimeout(go, 30);
+}
+function mascotLine() {
+  const next = D.active.find(g => g.price > D.total), ready = D.active.find(g => g.price <= D.total);
+  const m = new Date(), m0 = new Date(m.getFullYear(), m.getMonth(), 1).getTime();
+  const net = D.txs.filter(t => t.ts >= m0).reduce((a, t) => a + (t.type === "in" ? t.amount : -t.amount), 0);
+  const lines = [];
+  if (!D.txs.length) lines.push("Ciao! Segna i soldi che hai adesso con Entrata, io li tengo al sicuro.");
+  if (ready) lines.push(`Hai abbastanza per ${ready.name}. Lo prendi?`);
+  if (next) lines.push(`Mancano ${money(next.price - D.total)} per ${next.name}. Ce la facciamo!`);
+  if (D.txs.length && net > 0) lines.push(`Questo mese hai messo da parte ${money(net)}. Ottimo lavoro!`);
+  if (D.txs.length && net < 0) lines.push(`Questo mese sei sotto di ${money(-net)}. Occhio alle uscite.`);
+  if (!D.active.length && D.txs.length) lines.push("Dammi un obiettivo: cosa vuoi comprarti?");
+  return lines[Math.floor(Math.random() * lines.length)] || "Ogni moneta conta.";
+}
+function mascotSay(btn) {
+  document.querySelectorAll(".m-bubble").forEach(b => b.remove());
+  const b = document.createElement("div"); b.className = "m-bubble"; b.textContent = mascotLine();
+  btn.closest(".nav").appendChild(b);
+  setTimeout(() => b.classList.add("out"), 3600); setTimeout(() => b.remove(), 4000);
+}
+
 const CATS = {
   out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
   in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Altro","dots"]]
@@ -260,7 +307,7 @@ function homeScreen() {
   const ready = D.active.filter(g => g.price <= D.total).length;
   const months = monthStats();
   return `
-  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div><span class="nav-logo">${logoSvg(46)}</span></header>
+  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div>${mascot()}</header>
   <div id="syncBadge"></div>
   <section class="card balance">
     <div class="bal-top"><span class="lbl">Saldo</span>
@@ -432,7 +479,7 @@ function txRow(t) {
 let movQuery = "";
 function movScreen() {
   return `
-  <header class="nav"><div><h1>Movimenti</h1></div><button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></header>
+  <header class="nav"><div><h1>Movimenti</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></div></header>
   <div class="search">${ic("search", 18)}<input id="movQ" type="search" placeholder="Cerca per nota o categoria" value="${esc(movQuery)}" autocomplete="off"></div>
   <div class="seg" role="group">
     ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
@@ -471,7 +518,7 @@ function goalCard(g) {
 }
 function goalsScreen() {
   return `
-  <header class="nav"><div><h1>Obiettivi</h1></div><button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ic("plus", 20)}</button></header>
+  <header class="nav"><div><h1>Obiettivi</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ic("plus", 20)}</button></div></header>
   ${D.active.length ? `<div class="goal-grid">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo obiettivo</span></button></div>
     <p class="hint">Ogni obiettivo si confronta con tutto il saldo (${money(D.total)}). Quando ne compri uno il saldo scende e gli altri si aggiornano.</p>`
   : emptyCard("flag", "Nessun obiettivo", "Scrivi cosa vuoi comprare e quanto costa. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
@@ -486,7 +533,7 @@ function moreScreen() {
   const cloud = S.mode === "cloud";
   const last = S.lastSync ? new Date(S.lastSync).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
   return `
-  <header class="nav"><div><h1>Altro</h1></div></header>
+  <header class="nav"><div><h1>Altro</h1></div>${mascot()}</header>
   <div class="group-h"><span>Account</span></div>
   <div class="list">
     ${cloud ? `<div class="cell"><span>Email</span><span>${esc(session?.user?.email || "")}</span></div>
@@ -735,6 +782,7 @@ function txSheet(type, existing) {
       const before = existing ? { ...existing } : null;
       close(); putTx(rec);
       toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata`, () => before ? putTx(before) : delTx(rec.id));
+      if (!existing) mascotReact(t === "in" ? "jump" : "squish");
       celebrateIfReached(before ? before : null);
     };
     if (existing) $("#txDel").onclick = () => { const c = { ...existing }; close(); delTx(c.id); toast("Movimento eliminato", () => putTx(c)); };
@@ -747,7 +795,7 @@ let reachedBefore = new Set();
 function snapshotReached() { reachedBefore = new Set(D.active.filter(g => goalPct(g) >= 100).map(g => g.id)); }
 function celebrateIfReached() {
   const now = D.active.filter(g => goalPct(g) >= 100 && !reachedBefore.has(g.id));
-  if (now.length) toast(`Hai abbastanza per ${now[0].name}`);
+  if (now.length) { toast(`Hai abbastanza per ${now[0].name}`); mascotReact("wiggle"); }
   snapshotReached();
 }
 
@@ -934,6 +982,8 @@ async function importBackup(file) {
 
 /* ============ events ============ */
 document.addEventListener("click", e => {
+  const mb0 = e.target.closest("[data-mascot]");
+  if (mb0) { mascotReact("jump"); mascotSay(mb0); return; }
   const rb = e.target.closest("[data-range]"), mb = e.target.closest("[data-month]");
   if (rb) { range = +rb.dataset.range; render(); return; }
   if (mb) { selMonth = +mb.dataset.month; render(); return; }

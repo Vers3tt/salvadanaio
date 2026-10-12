@@ -318,6 +318,29 @@ input{border:0;outline:none;background:none}
 .about .logo{width:56px;height:56px;margin:0 0 6px}
 .about b{color:var(--ink);font-size:16px}
 @media (prefers-color-scheme:dark){.nav-logo .logo,.about .logo{background:var(--tile);border-radius:24%;padding:10%;box-sizing:border-box}}
+/* mascotte */
+.nav{position:relative}
+.nav-r{display:flex;align-items:center;gap:10px}
+.mascot{width:50px;height:66px;flex:none;margin:0 -4px -2px 0;-webkit-touch-callout:none}
+.mascot svg{width:100%;height:100%;overflow:visible;display:block}
+.mascot .m-float{animation:mFloat 3.4s ease-in-out infinite}
+.mascot .m-shadow{transform-box:fill-box;transform-origin:center;animation:mShadow 3.4s ease-in-out infinite}
+.mascot .m-react,.mascot .m-nos{transform-box:fill-box;transform-origin:center}
+.mascot .m-nos{animation:mBlink 5.2s ease-in-out infinite}
+.mascot.jump .m-react{animation:mJump .75s cubic-bezier(.3,1.5,.5,1)}
+.mascot.squish .m-react{transform-origin:50% 100%;animation:mSquish .7s ease}
+.mascot.wiggle .m-react{animation:mWiggle .8s ease}
+@keyframes mFloat{50%{transform:translateY(-4px)}}
+@keyframes mShadow{50%{transform:scaleX(.82);opacity:.08}}
+@keyframes mBlink{0%,90%,100%{transform:none}93%{transform:scaleY(.12)}96%{transform:none}}
+@keyframes mJump{0%{transform:none}35%{transform:translateY(-16px) scale(1.06,.96)}60%{transform:translateY(0) scale(1.08,.9)}80%{transform:scale(.97,1.04)}100%{transform:none}}
+@keyframes mSquish{30%{transform:scale(1.14,.78)}60%{transform:scale(.95,1.05)}100%{transform:none}}
+@keyframes mWiggle{20%{transform:rotate(-12deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-6deg)}80%{transform:rotate(3deg)}}
+.m-bubble{position:absolute;right:0;top:calc(100% - 4px);z-index:6;max-width:250px;background:var(--navy);color:#fff;font-size:14px;line-height:1.35;padding:10px 13px;border-radius:14px 4px 14px 14px;box-shadow:0 10px 24px -10px rgba(10,20,50,.5);animation:bIn .25s cubic-bezier(.2,.9,.3,1.2);transition:opacity .35s,transform .35s}
+.m-bubble.out{opacity:0;transform:translateY(-4px)}
+@keyframes bIn{from{opacity:0;transform:translateY(-6px) scale(.96)}}
+@media (prefers-color-scheme:dark){.mascot svg{filter:drop-shadow(0 0 0 transparent)}.mascot .m-react>circle:first-child{stroke:#F4F6FA;stroke-width:2.5}.m-bubble{background:#F4F6FA;color:var(--navy)}}
+@media (prefers-reduced-motion:reduce){.mascot .m-float,.mascot .m-shadow,.mascot .m-nos{animation:none}}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}
