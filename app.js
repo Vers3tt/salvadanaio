@@ -122,7 +122,7 @@ function mascotLine() {
 function mascotSay(btn) {
   document.querySelectorAll(".m-bubble").forEach(b => b.remove());
   const b = document.createElement("div"); b.className = "m-bubble"; b.textContent = mascotLine();
-  const host = btn.closest(".nav") || btn.closest(".ob-hero"); if (!host) return;
+  const host = btn.closest(".nav, .ob-hero, .side-brand"); if (!host) return;
   host.appendChild(b);
   setTimeout(() => b.classList.add("out"), 3600); setTimeout(() => b.remove(), 4000);
 }
@@ -312,10 +312,15 @@ function render() {
   if (needsOnboarding()) return renderOnboarding();
   const screens = { home: homeScreen, mov: movScreen, goals: goalsScreen, more: moreScreen };
   $("#app").innerHTML = `<main class="screen">${screens[tab]()}</main>
-  <div class="tabbar"><nav>
+  <div class="tabbar"><div class="side-brand">${mascot()}<b>Salvadanaio</b></div><nav>
     ${[["home","Home","home"],["mov","Movimenti","receipt"],["goals","Obiettivi","flag"],["more","Altro","sliders"]]
       .map(([k, l, i]) => `<button data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${ic(i, 24)}<span>${l}</span></button>`).join("")}
-  </nav></div>`;
+  </nav>
+  <div class="side-actions">
+    <button class="side-new out" data-new="out">${ic("minus", 18)}Uscita<kbd>U</kbd></button>
+    <button class="side-new in" data-new="in">${ic("plus", 18)}Entrata<kbd>E</kbd></button>
+  </div>
+  <div class="side-foot" id="sideFoot"></div></div>`;
   syncBadge();
 }
 function setTab(t) { tab = t; try { sessionStorage.setItem(LS + ".tab", t); } catch {} render(); window.scrollTo(0, 0); }
@@ -337,6 +342,7 @@ function homeScreen() {
   return `
   <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div>${mascot()}</header>
   <div id="syncBadge"></div>
+  <div class="home-grid"><div class="col-a">
   <section class="card balance">
     <div class="bal-top"><span class="lbl">Saldo</span>
       <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
@@ -354,7 +360,8 @@ function homeScreen() {
     <div class="sec-h"><h2>Mese per mese</h2></div>
     <div class="card monthly">${monthlyChart(months)}${monthSummary(months[selMonth])}</div>
   </section>
-  <section class="section">
+  </div><div class="col-b">
+  <section class="section first">
     <div class="sec-h"><h2>Dove vanno i soldi</h2><button class="link" data-budgets>${Object.keys(S.settings.budgets || {}).length ? "Budget" : "Imposta budget"}</button></div>
     <p class="sec-note">${esc(months[selMonth].label)}</p>
     ${categoryBreakdown(months[selMonth])}
@@ -368,7 +375,8 @@ function homeScreen() {
     <div class="sec-h"><h2>Ultimi movimenti</h2>${D.txs.length > 5 ? `<button class="link" data-tab="mov">Tutti</button>` : ""}</div>
     ${D.txs.length ? `<div class="list">${D.txs.slice(0, 5).map(txRow).join("")}</div>`
       : emptyCard("receipt", "Nessun movimento", "Tocca Entrata e segna i soldi che hai adesso: diventa il tuo saldo di partenza.")}
-  </section>`;
+  </section>
+  </div></div>`;
 }
 
 /* daily balance for the chosen range, oldest first */
@@ -515,11 +523,28 @@ let movQuery = "";
 function movScreen() {
   return `
   <header class="nav"><div><h1>Movimenti</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></div></header>
+  <div class="mov-grid"><aside class="mov-side">
   <div class="search">${ic("search", 18)}<input id="movQ" type="search" placeholder="Cerca per nota o categoria" value="${esc(movQuery)}" autocomplete="off"></div>
   <div class="seg" role="group">
     ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
   </div>
-  <div id="movList">${movList()}</div>`;
+  <div id="movSum">${movSummary()}</div>
+  </aside>
+  <div id="movList">${movList()}</div></div>`;
+}
+function movFiltered() {
+  const q = movQuery.trim().toLowerCase();
+  return D.txs.filter(t => (movFilter === "all" || t.type === movFilter)
+    && (!q || (t.note || "").toLowerCase().includes(q) || catInfo(t.type, t.cat)[0].toLowerCase().includes(q)));
+}
+function movSummary() {
+  const l = movFiltered(), inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
+  return `<div class="card mov-sum">
+    <div><span>${l.length === 1 ? "1 movimento" : l.length + " movimenti"}</span></div>
+    <div><span>Entrate</span><b class="num pos">${money(inn)}</b></div>
+    <div><span>Uscite</span><b class="num">${money(out)}</b></div>
+    <div><span>Differenza</span><b class="num ${inn - out < 0 ? "neg" : ""}">${inn - out < 0 ? "−" : ""}${money(Math.abs(inn - out))}</b></div>
+  </div>`;
 }
 function movList() {
   const q = movQuery.trim().toLowerCase();
@@ -604,6 +629,10 @@ function moreScreen() {
 
 // Sync state is shown only when something needs attention: offline or changes still waiting.
 function syncBadge() {
+  const f = $("#sideFoot");
+  if (f) f.innerHTML = S.mode === "cloud"
+    ? `<span>${esc(session?.user?.email || "")}</span>${!navigator.onLine ? `<span class="warn">${ic("cloudOff", 14)}Offline</span>` : S.pending.length ? `<span>${ic("sync", 14)}${S.pending.length} da inviare</span>` : ""}`
+    : `<span>Dati solo su questo dispositivo</span>`;
   const b = $("#syncBadge");
   if (!b || S.mode !== "cloud") { if (b) b.innerHTML = ""; return; }
   const n = S.pending.length;
@@ -1242,7 +1271,15 @@ document.addEventListener("pointermove", e => { const c = e.target.closest("[dat
 document.addEventListener("pointerdown", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
 document.addEventListener("pointerout", e => { const c = e.target.closest("[data-chart=balance]"); if (c && !c.contains(e.relatedTarget)) chartLeave(c); });
 document.addEventListener("input", e => {
-  if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); }
+  if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); $("#movSum").innerHTML = movSummary(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || closeSheet || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || !S.mode || needsOnboarding()) return;
+  const k = e.key.toLowerCase();
+  if (k === "u" || k === "e") { e.preventDefault(); snapshotReached(); txSheet(k === "u" ? "out" : "in"); }
+  else if (k === "o") { e.preventDefault(); snapshotReached(); goalEditSheet(); }
+  else if (k === "/") { e.preventDefault(); if (tab !== "mov") setTab("mov"); setTimeout(() => $("#movQ")?.focus(), 0); }
+  else if ("1234".includes(k)) setTab(["home", "mov", "goals", "more"][+k - 1]);
 });
 addEventListener("online", () => { syncBadge(); sync(); });
 addEventListener("offline", syncBadge);
