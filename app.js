@@ -1257,9 +1257,9 @@ function siriSheet() {
     </div>
 
     <div class="group-h"><span>2 · Aggiungi i comandi</span></div>
-    <div class="list">${SHORTCUTS.map(([n, d, i]) => `<a class="row" href="comandi/${encodeURIComponent(n)}.shortcut" target="_blank" rel="noopener">
+    <div class="list">${SHORTCUTS.map(([n, d, i]) => `<a class="row" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">
       <span class="ico">${ic(i, 20)}</span><span class="t"><b>${esc(n)}</b><small>${esc(d)}</small></span><span class="a" style="color:var(--ink2)">${ic("external", 18)}</span></a>`).join("")}</div>
-    <p class="hint">Apri il link da iPhone o Mac: si apre Comandi Rapidi, tocca <b>Aggiungi comando</b> e incolla il codice quando te lo chiede.</p>
+    <p class="hint">Tocca un comando per scaricarlo, poi aprilo: su Mac con doppio clic dal Finder (cartella Download), su iPhone dall'app File. Si apre Comandi Rapidi: tocca <b>Aggiungi comando</b> e incolla il codice quando te lo chiede. Basta farlo su un solo dispositivo: con iCloud i comandi arrivano anche sugli altri.</p>
 
     <div class="group-h"><span>3 · Usali</span></div>
     <div class="card howto">
