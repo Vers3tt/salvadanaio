@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Salvadanaio</title>
 <meta name="description" content="Entrate, uscite e obiettivi di risparmio.">
-<meta name="theme-color" content="#F2F2F0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0E0E0D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F3F5F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#080D1A" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -19,19 +19,24 @@
    for money coming in and for progress; red only for a negative balance. Native SF Pro for UI,
    amounts set like shelf price tags (cents small and raised). Line icons, no emoji, no badges. */
 :root{
-  --bg:#F2F2F0; --card:#FFFFFF; --fill:#EBEBE8; --fill2:#F6F6F4;
-  --line:rgba(20,20,18,.09); --ink:#141413; --ink2:#6E6E68; --ink3:#AEAEA7;
-  --green:#1F6B4E; --green-soft:#E2EEE8; --neg:#B3261E; --neg-soft:#F7E4E2;
-  --on-ink:#FFFFFF; --bar:rgba(242,242,240,.86); --scrim:rgba(0,0,0,.3); --tile:#FFFFFF;
+  /* Brand: blu notte dell'icona su bianco freddo. Il testo e i pulsanti principali sono blu notte,
+     il verde resta solo per i soldi che entrano, il rosso solo per il saldo negativo. */
+  --bg:#F3F5F9; --card:#FFFFFF; --fill:#E9EDF4; --fill2:#F5F7FB;
+  --line:rgba(16,28,60,.09); --ink:#111C38; --ink2:#5E6984; --ink3:#A4ACBF;
+  --navy:#162448; --navy-2:#26386A; --rim:#46609C;
+  --green:#18795C; --green-soft:#E1F1EB; --neg:#C0362C; --neg-soft:#F9E3E1;
+  --on-ink:#FFFFFF; --bar:rgba(243,245,249,.86); --scrim:rgba(8,14,30,.34); --tile:#FFFFFF;
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --font-d:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --r:14px; color-scheme:light;
+  --font-r:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --r:16px; color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0E0E0D; --card:#1A1A19; --fill:#262624; --fill2:#202020;
-  --line:rgba(255,255,250,.09); --ink:#F1F1EE; --ink2:#9B9B95; --ink3:#5C5C58;
-  --green:#6CC79E; --green-soft:rgba(108,199,158,.14); --neg:#F0776B; --neg-soft:rgba(240,119,107,.14);
-  --on-ink:#111110; --bar:rgba(14,14,13,.86); --scrim:rgba(0,0,0,.55); --tile:#F4F4F2; color-scheme:dark}}
+  --bg:#080D1A; --card:#121A2E; --fill:#1C2640; --fill2:#172036;
+  --line:rgba(200,215,255,.09); --ink:#EDF1FA; --ink2:#97A2BC; --ink3:#56617C;
+  --navy:#162448; --navy-2:#26386A; --rim:#5B78BE;
+  --green:#5CCBA3; --green-soft:rgba(92,203,163,.14); --neg:#F2786D; --neg-soft:rgba(242,120,109,.14);
+  --on-ink:#0B1226; --bar:rgba(8,13,26,.86); --scrim:rgba(0,0,0,.55); --tile:#F4F6FA; color-scheme:dark}}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.38;-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
@@ -213,7 +218,6 @@ input{border:0;outline:none;background:none}
 /* auth / setup */
 .auth{min-height:100vh;display:grid;place-items:center;padding:calc(env(safe-area-inset-top,0px) + 24px) 20px calc(env(safe-area-inset-bottom,0px) + 24px)}
 .auth .box{width:100%;max-width:380px;display:grid;gap:12px}
-.auth .logo{width:76px;height:76px;border-radius:18px;margin:0 auto 6px}
 .auth h1{text-align:center;margin:0;font-family:var(--font-d);font-size:28px;letter-spacing:-.025em}
 .auth p{text-align:center;color:var(--ink2);margin:0 0 6px}
 .auth .err{color:var(--neg);font-size:14px;text-align:center;min-height:1em}
@@ -294,10 +298,30 @@ input{border:0;outline:none;background:none}
 .plan{display:flex;gap:10px;align-items:flex-start;background:var(--card);border-radius:12px;padding:12px 14px;font-size:14.5px;margin:0 0 12px;text-align:left}
 .plan .i{color:var(--ink2);margin-top:1px}
 .linkbtn{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;box-sizing:border-box}
+/* logo + splash */
+.logo-svg{display:block}
+.auth .logo{width:84px;height:84px;margin:0 auto 6px;border-radius:0}
+#splash{position:fixed;inset:0;z-index:100;background:var(--bg);display:grid;place-items:center;transition:opacity .45s ease .05s}
+#splash.out{opacity:0;pointer-events:none}
+#splash .stage{display:grid;justify-items:center;gap:22px}
+#splash svg{width:148px;height:148px;overflow:visible}
+#splash .back1,#splash .back2{opacity:0;transform-box:fill-box;transform-origin:center}
+#splash .back2{animation:slideIn .5s cubic-bezier(.2,.9,.3,1) .08s forwards}
+#splash .back1{animation:slideIn .5s cubic-bezier(.2,.9,.3,1) .2s forwards}
+#splash .front{transform-box:fill-box;transform-origin:50% 100%;opacity:0;animation:drop .7s cubic-bezier(.3,1.4,.5,1) .32s forwards}
+#splash .nostrils{transform-box:fill-box;transform-origin:center;animation:blink .32s ease 1.15s}
+#splash .name{font-family:var(--font-d);font-size:30px;font-weight:700;letter-spacing:-.03em;color:var(--ink);opacity:0;transform:translateY(8px);animation:rise .5s ease .75s forwards}
+@media (prefers-color-scheme:dark){#splash svg,.auth .logo{background:var(--tile);border-radius:24%;padding:11%;box-sizing:border-box;overflow:hidden}}
+@keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
+@keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes blink{50%{transform:scaleY(.15)}}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#splash .back1,#splash .back2,#splash .front,#splash .name{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><div class="stage"><svg id="splashLogo"></svg><div class="name">Salvadanaio</div></div></div>
 <div id="app"></div>
 <div id="layer"></div>
 <div id="toastRoot"></div>

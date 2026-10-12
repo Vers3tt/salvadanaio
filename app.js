@@ -61,6 +61,22 @@ const P = {
 };
 const ic = (name, size = 22) => `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name]}</svg>`;
 
+/* Logo: la moneta-muso blu notte con due monete dietro (stessa forma dell'icona dell'app) */
+function coinSvg(cls, cx, cy, r, detail) {
+  if (!detail) return `<circle class="${cls}" cx="${cx}" cy="${cy}" r="${r}" fill="#162448"/>`;
+  const reed = 2 * Math.PI * r * .94;
+  return `<g class="${cls}">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#162448"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * .94}" fill="none" stroke="#46609C" stroke-width="${r * .08}" stroke-dasharray="${reed / 72 * .35} ${reed / 72 * .65}"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * .84}" fill="none" stroke="#46609C" stroke-width="${r * .045}"/>
+    <path d="M${cx - r * .62} ${cy - r * .5}A${r * .74} ${r * .74} 0 0 1 ${cx - r * .25} ${cy - r * .7}" fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="${r * .045}" stroke-linecap="round"/>
+    <ellipse cx="${cx}" cy="${cy + r * .06}" rx="${r * .56}" ry="${r * .4}" fill="#26386A"/>
+    <g class="nostrils" fill="#fff"><ellipse cx="${cx - r * .2}" cy="${cy + r * .06}" rx="${r * .12}" ry="${r * .22}"/><ellipse cx="${cx + r * .2}" cy="${cy + r * .06}" rx="${r * .12}" ry="${r * .22}"/></g>
+  </g>`;
+}
+const logoInner = () => `<g opacity=".35">${coinSvg("back2", 60, 40, 30)}</g><g opacity=".6">${coinSvg("back1", 55, 45, 30)}</g>${coinSvg("front", 47, 53, 30, true)}`;
+const logoSvg = (size = 84) => `<svg class="logo logo-svg" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">${logoInner()}</svg>`;
+
 const CATS = {
   out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
   in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Altro","dots"]]
@@ -510,7 +526,7 @@ function syncBadge() {
 /* ============ setup / login ============ */
 function renderSetup() {
   $("#app").innerHTML = `<div class="auth"><form class="box" id="setupForm" autocomplete="off">
-    <img class="logo" src="icons/icon-192.png" alt="">
+    ${logoSvg()}
     <h1>Salvadanaio</h1>
     <p>Collega il tuo progetto Supabase per avere gli stessi dati su telefono e computer.</p>
     <div class="list steps">
@@ -550,7 +566,7 @@ function renderLogin() {
   let signup = false;
   const draw = () => {
     $("#app").innerHTML = `<div class="auth"><form class="box" id="loginForm">
-      <img class="logo" src="icons/icon-192.png" alt="">
+      ${logoSvg()}
       <h1>${signup ? "Crea il tuo account" : "Accedi"}</h1>
       <p>${signup ? "Serve solo la prima volta. Poi accedi con la stessa email su ogni dispositivo." : "Accedi per vedere i tuoi risparmi."}</p>
       <div class="fields">
@@ -946,6 +962,19 @@ document.addEventListener("input", e => {
 addEventListener("online", () => { syncBadge(); sync(); });
 addEventListener("offline", syncBadge);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
+
+/* ============ splash ============ */
+(function splash() {
+  const el = $("#splash"); if (!el) return;
+  $("#splashLogo").setAttribute("viewBox", "0 0 100 100");
+  $("#splashLogo").innerHTML = logoInner();
+  let seen = false; try { seen = sessionStorage.getItem(LS + ".splash") === "1"; sessionStorage.setItem(LS + ".splash", "1"); } catch {}
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const hide = () => { el.classList.add("out"); setTimeout(() => el.remove(), 600); };
+  if (seen) { el.remove(); return; }
+  setTimeout(hide, reduce ? 500 : 1650);
+  el.addEventListener("click", hide);
+})();
 
 /* ============ boot ============ */
 if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
