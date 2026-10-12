@@ -1,4 +1,4 @@
-"""Genera i Comandi Rapidi di Salvadanaio (Uscita, Entrata, Saldo) e li firma con `shortcuts sign`.
+"""Genera i Comandi Rapidi di Keepo (Uscita, Entrata, Saldo) e li firma con `shortcuts sign`.
 Uso: python3 design/build_shortcuts.py                      -> comandi/*.shortcut (chiedono il codice all'import)
      SD_TOKEN=sd_... SD_OUT=/cartella python3 design/...     -> comandi personali con il codice già dentro"""
 import plistlib, uuid, subprocess, os, re, tempfile
@@ -23,7 +23,7 @@ def dict_items(pairs):  # [(key, value-field)] -> WFDictionaryFieldValue
             "WFSerializationType": "WFDictionaryFieldValue"}
 def act(ident, params): return {"WFWorkflowActionIdentifier": ident, "WFWorkflowActionParameters": params}
 
-CODE_PATH = "Salvadanaio/codice.txt"   # in iCloud Drive → Comandi Rapidi, condiviso da tutti i comandi
+CODE_PATH = "Keepo/codice.txt"   # in iCloud Drive → Comandi Rapidi, condiviso da tutti i comandi
 def named(name):  # text field made of a named variable
     return {"Value": {"string": "\uFFFC", "attachmentsByRange": {"{0, 1}": {"Type": "Variable", "VariableName": name}}},
             "WFSerializationType": "WFTextTokenString"}
@@ -40,7 +40,7 @@ def token_action():
             "WFInput": {"Type": "Variable", "Variable": var_attach(fid, "File")}}),
         act("is.workflow.actions.getclipboard", {"UUID": cb}),
         act("is.workflow.actions.ask", {"UUID": ask, "WFInputType": "Text",
-            "WFAskActionPrompt": "Codice personale di Salvadanaio (app → Altro → Siri e widget → Copia codice)",
+            "WFAskActionPrompt": "Codice personale di Keepo (app → Altro → Siri e widget → Copia codice)",
             "WFAskActionDefaultAnswer": var_text(cb, "Clipboard")}),
         act("is.workflow.actions.documentpicker.save", {"WFInput": var_attach(ask, "Provided Input"), "WFAskWhereToSave": False,
             "WFFileDestinationPath": CODE_PATH, "WFSaveFileOverwrite": True}),
@@ -108,9 +108,9 @@ def workflow(actions, glyph, color):
         "WFWorkflowActions": actions}
 
 # colori del Comando Rapido: blu scuro, verde, blu
-SPECS = [("Uscita Salvadanaio", movement("out"), 59511, 463140863),
-         ("Entrata Salvadanaio", movement("in"), 59511, 431817727),
-         ("Saldo Salvadanaio", balance(), 59446, 4282601983)]
+SPECS = [("Uscita Keepo", movement("out"), 59511, 463140863),
+         ("Entrata Keepo", movement("in"), 59511, 431817727),
+         ("Saldo Keepo", balance(), 59446, 4282601983)]
 out = os.environ.get("SD_OUT") or os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
 for name, actions, glyph, color in SPECS:
     with tempfile.NamedTemporaryFile(suffix=".shortcut", delete=False) as f:

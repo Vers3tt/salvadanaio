@@ -1,4 +1,4 @@
-# Salvadanaio
+# Keepo
 
 App personale per segnare entrate e uscite e seguire gli obiettivi di risparmio.
 Tutto il saldo conta per ogni obiettivo: quando decidi di comprare qualcosa premi **L'ho comprato**, l'app segna l'uscita e gli altri obiettivi si aggiornano.

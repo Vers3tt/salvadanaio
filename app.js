@@ -83,7 +83,7 @@ const logoSvg = (size = 84) => `<svg class="logo logo-svg" width="${size}" heigh
    salta quando entrano soldi, si schiaccia quando escono, e se la tocchi ti dice come vai. */
 function mascot() {
   const r = 30, cx = 50, cy = 46, reed = 2 * Math.PI * r * .94;
-  return `<button class="mascot" data-mascot aria-label="Salvadanaio: tocca per un consiglio">
+  return `<button class="mascot" data-mascot aria-label="Keepo: tocca per un consiglio">
     <svg viewBox="16 6 68 90" aria-hidden="true">
       <ellipse class="m-shadow" cx="50" cy="90" rx="22" ry="4.5" fill="var(--ink)" opacity=".14"/>
       <g class="m-float"><g class="m-react">
@@ -312,7 +312,7 @@ function render() {
   if (needsOnboarding()) return renderOnboarding();
   const screens = { home: homeScreen, mov: movScreen, goals: goalsScreen, more: moreScreen };
   $("#app").innerHTML = `<main class="screen">${screens[tab]()}</main>
-  <div class="tabbar"><div class="side-brand">${mascot()}<b>Salvadanaio</b></div><nav>
+  <div class="tabbar"><div class="side-brand">${mascot()}<b>Keepo</b></div><nav>
     ${[["home","Home","home"],["mov","Movimenti","receipt"],["goals","Obiettivi","flag"],["more","Altro","sliders"]]
       .map(([k, l, i]) => `<button data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${ic(i, 24)}<span>${l}</span></button>`).join("")}
   </nav>
@@ -340,7 +340,7 @@ function homeScreen() {
   const ready = D.active.filter(g => g.price <= D.total).length;
   const months = monthStats();
   return `
-  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Salvadanaio</h1></div>${mascot()}</header>
+  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Keepo</h1></div>${mascot()}</header>
   <div id="syncBadge"></div>
   <div class="home-grid"><div class="col-a">
   <section class="card balance">
@@ -624,7 +624,7 @@ function moreScreen() {
     <div class="cell"><span>Obiettivi comprati</span><span class="num">${D.done.length}</span></div>
   </div>
   ${cloud ? `<div class="list" style="margin-top:22px"><button class="cell danger" data-more="delete"><span>Elimina account e dati</span></button></div>` : ""}
-  <div class="about">${logoSvg(56)}<b>Salvadanaio</b><span>I tuoi risparmi, sempre con te</span>
+  <div class="about">${logoSvg(56)}<b>Keepo</b><span>I tuoi risparmi, sempre con te</span>
     <span class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></span></div>
   <input type="file" id="importIn" accept="application/json,.json" hidden>`;
 }
@@ -649,7 +649,7 @@ function syncBadge() {
 function renderSetup() {
   $("#app").innerHTML = `<div class="auth"><form class="box" id="setupForm" autocomplete="off">
     ${logoSvg()}
-    <h1>Salvadanaio</h1>
+    <h1>Keepo</h1>
     <p>Collega il tuo progetto Supabase per avere gli stessi dati su telefono e computer.</p>
     <div class="list steps">
       <div class="cell"><span><b>1.</b> Crea un progetto gratuito su <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a></span></div>
@@ -1069,7 +1069,7 @@ async function importBackup(file) {
     d.tx.forEach(t => { if (t.id && t.amount && !S.tx[t.id]) { S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); n++; } });
     (d.goals || []).forEach(g => { if (g.id && g.price && !S.goals[g.id]) { S.goals[g.id] = g; enqueue({ op: "up", t: "goals", row: pick(g, COLS.goals) }); n++; } });
     commit(); toast(n ? `Importati ${n} elementi` : "Niente di nuovo da importare");
-  } catch { toast("Questo file non è un backup del Salvadanaio"); }
+  } catch { toast("Questo file non è un backup di Keepo"); }
 }
 
 /* ============ recurring ============ */
@@ -1165,7 +1165,7 @@ let obStep = 0, obData = {};
 function renderOnboarding() {
   const steps = [
     () => `<div class="ob-hero">${mascot()}</div>
-      <h1>Ciao, sono Soldino</h1>
+      <h1>Ciao, sono Keepo</h1>
       <p>Ti aiuto a segnare entrate e uscite in due tocchi e a mettere da parte i soldi per quello che vuoi comprarti.</p>
       <button class="save" data-ob="next">Iniziamo</button>`,
     () => `<div class="ob-hero">${mascot()}</div>
@@ -1240,15 +1240,15 @@ function deleteAccountSheet() {
 }
 
 /* ============ Siri, widget e Comandi Rapidi ============ */
-const SHORTCUTS = [["Uscita Salvadanaio", "Chiede importo e categoria e segna una spesa", "minus"],
-                   ["Entrata Salvadanaio", "Chiede importo e categoria e segna un'entrata", "plus"],
-                   ["Saldo Salvadanaio", "Ti dice il saldo e il riepilogo del mese", "receipt"]];
+const SHORTCUTS = [["Uscita Keepo", "Chiede importo e categoria e segna una spesa", "minus"],
+                   ["Entrata Keepo", "Chiede importo e categoria e segna un'entrata", "plus"],
+                   ["Saldo Keepo", "Ti dice il saldo e il riepilogo del mese", "receipt"]];
 async function sha256hex(t) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 function siriSheet() {
   sheet(`<div class="sheet-h"><span></span><h3>Siri e widget</h3><button class="r" data-x>Fine</button></div>
-    <p class="hint" style="margin:0 4px 14px">Segna entrate e uscite senza aprire l'app: con Siri ("Ehi Siri, Uscita Salvadanaio"), da un widget nella schermata Home o dal Centro Notifiche del Mac.</p>
+    <p class="hint" style="margin:0 4px 14px">Segna entrate e uscite senza aprire l'app: con Siri ("Ehi Siri, Uscita Keepo"), da un widget nella schermata Home o dal Centro Notifiche del Mac.</p>
 
     <div class="group-h" style="margin-top:4px"><span>1 · Il tuo codice personale</span></div>
     <div class="card qcode" id="qBox">
@@ -1263,10 +1263,10 @@ function siriSheet() {
 
     <div class="group-h"><span>3 · Usali</span></div>
     <div class="card howto">
-      <p><b>Siri:</b> "Ehi Siri, Uscita Salvadanaio", poi rispondi con l'importo e la categoria.</p>
-      <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>, e scegli i comandi di Salvadanaio.</p>
+      <p><b>Siri:</b> "Ehi Siri, Uscita Keepo", poi rispondi con l'importo e la categoria.</p>
+      <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>, e scegli i comandi di Keepo.</p>
       <p><b>Mac:</b> i comandi arrivano anche sul Mac con iCloud. Aggiungili al widget Comandi Rapidi nel Centro Notifiche, o fissali nella barra dei menu da Comandi Rapidi → Impostazioni.</p>
-      <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Salvadanaio.</p>
+      <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Keepo.</p>
     </div>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     $("#qGen").onclick = async () => {
