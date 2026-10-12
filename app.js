@@ -278,6 +278,8 @@ let tab = "home", movFilter = "all";
 try { tab = sessionStorage.getItem(LS + ".tab") || "home"; } catch {}
 
 function render() {
+  const needsAuth = !S.mode || (S.mode === "cloud" && authReady && !session);
+  if (needsAuth && splashOn) { authHeld = true; $("#app").innerHTML = ""; return; }
   if (!S.mode) return renderSetup();
   if (S.mode === "cloud" && !authReady) { $("#app").innerHTML = ""; return; }
   if (S.mode === "cloud" && !session) return renderLogin();
@@ -1015,14 +1017,20 @@ addEventListener("offline", syncBadge);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(); });
 
 /* ============ splash ============ */
+// While the launch animation runs, the sign-in form is not in the page: otherwise iOS opens its
+// saved-passwords prompt on top of the animation.
+let splashOn = !!document.getElementById("splash"), authHeld = false;
 (function splash() {
   const el = $("#splash"); if (!el) return;
   $("#splashLogo").setAttribute("viewBox", "0 0 100 100");
   $("#splashLogo").innerHTML = logoInner();
-  let seen = false; try { seen = sessionStorage.getItem(LS + ".splash") === "1"; sessionStorage.setItem(LS + ".splash", "1"); } catch {}
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const hide = () => { el.classList.add("out"); setTimeout(() => el.remove(), 600); };
-  if (seen) { el.remove(); return; }
+  let done = false;
+  const hide = () => {
+    if (done) return; done = true;
+    el.classList.add("out");
+    setTimeout(() => { el.remove(); splashOn = false; if (authHeld) { authHeld = false; render(); } }, 450);
+  };
   setTimeout(hide, reduce ? 500 : 1650);
   el.addEventListener("click", hide);
 })();
