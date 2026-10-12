@@ -1,0 +1,699 @@
+<title>Salvadanaio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: phone = one column with Movimenti / Obiettivi tabs; wide = ledger left, goals shelf right */
+:root{
+  --bg:#E9EEF2; --surface:#FFFFFF; --sunk:#DCE3E9; --line:#CBD5DD;
+  --ink:#14212C; --muted:#5B6B78;
+  --brass:#A86F0C; --brass-soft:#F3E3C2; --on-brass:#FFFFFF;
+  --pos:#1D7A4B; --pos-soft:#D7EEE1; --neg:#B23A2E; --neg-soft:#F6DDD9;
+  --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --f-body:"Figtree",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px; --shadow:0 1px 0 rgba(20,33,44,.04),0 6px 20px -12px rgba(20,33,44,.25);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E151B; --surface:#16212A; --sunk:#0B1116; --line:#26343F;
+  --ink:#E4EBF0; --muted:#8FA0AD;
+  --brass:#E2A83C; --brass-soft:#3A2D14; --on-brass:#1A1204;
+  --pos:#5BC48D; --pos-soft:#15301F; --neg:#F07D6E; --neg-soft:#3A1C18;
+  --shadow:0 1px 0 rgba(0,0,0,.2),0 8px 24px -12px rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E151B; --surface:#16212A; --sunk:#0B1116; --line:#26343F;
+  --ink:#E4EBF0; --muted:#8FA0AD;
+  --brass:#E2A83C; --brass-soft:#3A2D14; --on-brass:#1A1204;
+  --pos:#5BC48D; --pos-soft:#15301F; --neg:#F07D6E; --neg-soft:#3A1C18;
+  --shadow:0 1px 0 rgba(0,0,0,.2),0 8px 24px -12px rgba(0,0,0,.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:20px 80px}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.wrap{max-width:1120px;margin-inline:auto;display:grid;gap:20px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
+.eyebrow{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* top */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand h1{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.coin{width:30px;height:30px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#F6D58A,var(--brass) 60%,#6E4706);box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.sync{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.sync.on i{background:var(--pos)} .sync.local i{background:var(--brass)}
+
+/* balance */
+.hero{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:20px;display:grid;gap:16px}
+.hero-main{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+.total{font-family:var(--f-num);font-weight:600;font-size:clamp(34px,8vw,52px);line-height:1;letter-spacing:-.03em}
+.total.neg{color:var(--neg)}
+.spark{flex:1 1 220px;max-width:340px;height:64px;min-width:0}
+.spark svg{width:100%;height:100%;display:block;overflow:visible}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border-radius:10px;overflow:hidden}
+.stat{background:var(--surface);padding:10px 12px;display:grid;gap:2px;min-width:0}
+.stat b{font-family:var(--f-num);font-weight:600;font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat .pos{color:var(--pos)} .stat .neg{color:var(--neg)}
+.stat span{font-size:12px;color:var(--muted)}
+@media (max-width:560px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* tabs (phone) */
+.tabs{display:none;background:var(--sunk);border-radius:12px;padding:4px;gap:4px}
+.tabs button{flex:1;border:0;background:transparent;padding:9px;border-radius:9px;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+
+.cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px;align-items:start}
+.col{display:grid;gap:16px;min-width:0}
+@media (max-width:860px){
+  .cols{grid-template-columns:minmax(0,1fr)}
+  .tabs{display:flex;position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:5}
+  .col[data-hide="1"]{display:none}
+}
+
+/* quick add */
+.quick{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;display:grid;gap:12px}
+.amount-row{display:flex;align-items:center;gap:8px;background:var(--sunk);border-radius:12px;padding:6px 6px 6px 14px}
+.amount-row .cur{font-family:var(--f-num);font-size:24px;color:var(--muted)}
+#amt{flex:1;min-width:0;border:0;background:transparent;font-family:var(--f-num);font-size:30px;font-weight:600;padding:6px 0;outline:none}
+#amt::placeholder{color:var(--line)}
+.go{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn-in,.btn-out{border:0;border-radius:12px;padding:14px 10px;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .08s}
+.btn-in:active,.btn-out:active{transform:scale(.97)}
+.btn-out{background:var(--neg-soft);color:var(--neg)}
+.btn-in{background:var(--pos-soft);color:var(--pos)}
+.btn-in .sig,.btn-out .sig{font-family:var(--f-num);font-size:20px;line-height:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:5px 11px;font-size:13px;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+#note{width:100%;border:1px solid var(--line);background:transparent;border-radius:10px;padding:9px 12px}
+.hint{font-size:12px;color:var(--muted)}
+
+/* ledger */
+.panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-inline:4px}
+.panel-h h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.ledger{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.day{padding:8px 16px;background:var(--sunk);display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:600}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:11px 10px 11px 16px;border-top:1px solid var(--line)}
+.day+.row{border-top:0}
+.dot{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-family:var(--f-num);font-weight:600}
+.dot.in{background:var(--pos-soft);color:var(--pos)} .dot.out{background:var(--neg-soft);color:var(--neg)}
+.row .what{min-width:0}
+.row .what b{display:block;font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .what small{color:var(--muted);font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .amt{font-family:var(--f-num);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row .amt.in{color:var(--pos)}
+.x{border:0;background:transparent;color:var(--muted);width:32px;height:32px;border-radius:8px;font-size:18px;line-height:1}
+.x:hover{background:var(--sunk);color:var(--neg)}
+.more{width:100%;border:0;border-top:1px solid var(--line);background:transparent;padding:12px;color:var(--muted);font-weight:600}
+.empty{padding:28px 20px;text-align:center;color:var(--muted);display:grid;gap:6px;justify-items:center}
+.empty strong{color:var(--ink);font-family:var(--f-display);font-size:17px}
+
+/* goals */
+.add-goal{border:0;background:var(--brass);color:var(--on-brass);font-weight:700;border-radius:10px;padding:8px 14px}
+.goals{display:grid;gap:12px}
+.goal{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;display:grid;grid-template-columns:104px minmax(0,1fr);gap:14px;position:relative}
+.shot{width:104px;height:104px;border-radius:12px;background:var(--sunk);display:grid;place-items:center;overflow:hidden;position:relative;border:0;padding:0}
+.shot img{width:100%;height:100%;object-fit:contain;padding:8px}
+.shot .ph{font-family:var(--f-display);font-weight:800;font-size:34px;color:var(--line)}
+.shot.gen::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--brass) 25%,transparent) 50%,transparent 70%);background-size:220% 100%;animation:shim 1.3s linear infinite}
+@keyframes shim{from{background-position:120% 0}to{background-position:-120% 0}}
+.goal-body{display:grid;gap:8px;min-width:0;align-content:start}
+.goal-top{display:flex;justify-content:space-between;gap:8px;align-items:start}
+.goal h3{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere}
+.price{font-family:var(--f-num);font-weight:600;white-space:nowrap}
+.bar{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brass);border-radius:99px;transition:width .4s cubic-bezier(.2,.8,.2,1)}
+.goal.full .bar i{background:var(--pos)}
+.meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;font-size:12.5px;color:var(--muted)}
+.meta b{color:var(--ink);font-family:var(--f-num);font-weight:600}
+.gact{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.gbtn{border:1px solid var(--line);background:transparent;border-radius:9px;padding:6px 10px;font-size:13px;font-weight:600}
+.gbtn.prim{background:var(--brass-soft);border-color:transparent;color:var(--brass)}
+.gbtn.ok{background:var(--pos);border-color:transparent;color:var(--surface)}
+.gin{display:flex;gap:6px;align-items:center;width:100%}
+.gin input{flex:1;min-width:0;border:1px solid var(--line);background:var(--sunk);border-radius:9px;padding:6px 10px;font-family:var(--f-num)}
+.menu{position:absolute;right:12px;top:44px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);display:grid;padding:4px;z-index:4;min-width:190px}
+.menu button{border:0;background:transparent;text-align:left;padding:9px 12px;border-radius:8px;font-size:14px}
+.menu button:hover{background:var(--sunk)}
+.menu .danger{color:var(--neg)}
+.dots{border:0;background:transparent;width:30px;height:30px;border-radius:8px;color:var(--muted);font-size:18px;line-height:1;flex:none}
+.dots:hover{background:var(--sunk)}
+.done-list{display:grid;gap:6px}
+.done-item{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--muted);padding:6px 4px}
+.done-item img{width:32px;height:32px;object-fit:contain;border-radius:6px;background:var(--sunk)}
+.done-item b{color:var(--ink);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(8,14,20,.5);display:grid;place-items:end center;z-index:20;padding:16px}
+@media (min-width:600px){.scrim{place-items:center}}
+.sheet{background:var(--surface);border-radius:18px;width:min(460px,100%);max-height:calc(100% - 20px);overflow:auto;padding:20px;display:grid;gap:14px;box-shadow:0 20px 50px -20px rgba(0,0,0,.5)}
+.sheet h2{font-size:20px}
+.field{display:grid;gap:5px}
+.field label{font-size:13px;font-weight:600;color:var(--muted)}
+.field input{border:1px solid var(--line);background:var(--sunk);border-radius:10px;padding:10px 12px;width:100%}
+.drop{border:1.5px dashed var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:84px minmax(0,1fr);gap:14px;align-items:center}
+.drop.over{border-color:var(--brass);background:var(--brass-soft)}
+.drop .prev{width:84px;height:84px;border-radius:10px;background:var(--sunk);display:grid;place-items:center;overflow:hidden}
+.drop .prev img{width:100%;height:100%;object-fit:contain;padding:6px}
+.drop p{margin:0;font-size:13px;color:var(--muted)}
+.linkbtn{border:0;background:transparent;color:var(--brass);font-weight:700;padding:0;text-decoration:underline;text-underline-offset:3px}
+.sheet-act{display:flex;gap:8px;justify-content:flex-end}
+.btn{border:1px solid var(--line);background:transparent;border-radius:10px;padding:10px 16px;font-weight:600}
+.btn.prim{background:var(--brass);border-color:var(--brass);color:var(--on-brass)}
+.btn.danger{background:var(--neg);border-color:var(--neg);color:var(--surface)}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 12px 10px 16px;border-radius:12px;display:flex;gap:12px;align-items:center;font-size:14px;z-index:30;max-width:calc(100% - 32px);box-shadow:0 10px 30px -10px rgba(0,0,0,.5)}
+.toast button{border:0;background:transparent;color:var(--brass);font-weight:700;padding:4px 6px}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand"><div class="coin" aria-hidden="true"></div><h1>Salvadanaio</h1></div>
+    <div class="sync" id="sync"><i></i><span>Apro il salvadanaio…</span></div>
+  </header>
+
+  <section class="hero" aria-label="Riepilogo">
+    <div class="hero-main">
+      <div>
+        <div class="eyebrow">Saldo totale</div>
+        <div class="total" id="total">€ 0,00</div>
+      </div>
+      <div class="spark" id="spark" aria-hidden="true"></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Libero da spendere</span><b id="sFree">—</b></div>
+      <div class="stat"><span>Messo negli obiettivi</span><b id="sAlloc">—</b></div>
+      <div class="stat"><span id="sMonthL">Entrate del mese</span><b class="pos" id="sIn">—</b></div>
+      <div class="stat"><span>Uscite del mese</span><b class="neg" id="sOut">—</b></div>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabL" aria-selected="true">Movimenti</button>
+    <button role="tab" id="tabG" aria-selected="false">Obiettivi</button>
+  </div>
+
+  <div class="cols">
+    <div class="col" id="colL">
+      <form class="quick" id="quick" autocomplete="off">
+        <div class="amount-row">
+          <span class="cur">€</span>
+          <input id="amt" inputmode="decimal" placeholder="0,00" aria-label="Importo">
+        </div>
+        <div class="go">
+          <button type="button" class="btn-out" id="bOut"><span class="sig">−</span> Uscita</button>
+          <button type="button" class="btn-in" id="bIn"><span class="sig">+</span> Entrata</button>
+        </div>
+        <div class="chips" id="chips"></div>
+        <input id="note" placeholder="Nota (facoltativa)" aria-label="Nota">
+        <div class="hint">Scrivi l'importo e premi Uscita o Entrata. Invio ripete l'ultimo tipo usato.</div>
+      </form>
+
+      <div class="panel-h"><h2>Movimenti</h2><span class="hint" id="txCount"></span></div>
+      <div class="ledger" id="ledger"><div class="loading">Carico i movimenti…</div></div>
+    </div>
+
+    <div class="col" id="colG" data-hide="1">
+      <div class="panel-h"><h2>Obiettivi</h2><button class="add-goal" id="addGoal">+ Nuovo obiettivo</button></div>
+      <div class="goals" id="goals"></div>
+      <div id="doneWrap" hidden>
+        <div class="panel-h" style="margin-top:8px"><span class="eyebrow">Già comprati</span></div>
+        <div class="done-list" id="doneList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="filePick" accept="image/*" hidden>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/[^a-zA-Z0-9-]/g, "");
+const EUR = new Intl.NumberFormat("it-IT", {style:"currency", currency:"EUR"});
+const money = c => EUR.format((c || 0) / 100);
+const parseAmt = s => {
+  s = String(s || "").trim().replace(/\s|€/g, "");
+  if (!s) return 0;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = Number(s);
+  return isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+};
+const CATS = {
+  out: ["Spesa", "Casa", "Bollette", "Trasporti", "Svago", "Ristoranti", "Shopping", "Salute", "Altro"],
+  in:  ["Stipendio", "Paghetta", "Regalo", "Vendita", "Lavoretto", "Altro"]
+};
+const LOCAL_KEY = "salvadanaio.v1";
+
+/* ---------- store: claude db (private per user) with localStorage fallback ---------- */
+const S = { mode: "boot", items: new Map(), col: null, assets: null, sample: null, queues: new Map() };
+
+function persistLocal() {
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify([...S.items.values()])); } catch {}
+}
+function loadLocal() {
+  try { const a = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]"); a.forEach(d => S.items.set(d.id, d)); } catch {}
+}
+function queue(id, fn) {
+  const p = (S.queues.get(id) || Promise.resolve()).then(fn).catch(e => { console.error(e); toast(e?.code === "quota_exceeded" ? "Spazio esaurito: elimina qualche movimento vecchio." : "Non sono riuscito a salvare. Riprova."); });
+  S.queues.set(id, p); return p;
+}
+function put(doc) {
+  S.items.set(doc.id, doc); render();
+  if (S.mode === "db") { const { id, ...body } = doc; return queue(id, () => S.col.doc(id).set(body)); }
+  persistLocal(); return Promise.resolve();
+}
+function del(id) {
+  S.items.delete(id); render();
+  if (S.mode === "db") return queue(id, () => S.col.doc(id).delete());
+  persistLocal(); return Promise.resolve();
+}
+const getDoc = id => S.items.get(id);
+
+async function boot() {
+  const use = window.claude?.use?.bind(window.claude);
+  let db = null, user = null;
+  if (use) {
+    [db, user, S.assets, S.sample] = await Promise.all(["db","user","assets","sample"].map(n => use(n).catch(() => null)));
+  }
+  const id = db && user ? await user.id().catch(() => null) : null;
+  if (db && id) {
+    S.mode = "db";
+    S.col = db.collection("data/users/" + id);
+    setSync("on", "Salvato nel tuo account");
+    let first = true;
+    S.col.onSnapshot(snap => {
+      const m = new Map();
+      snap.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
+      S.items = m; first = false; render();
+    }, () => setSync("local", "Connessione persa: ricarica la pagina"));
+  } else {
+    S.mode = "local"; loadLocal();
+    setSync("local", "Salvato solo su questo dispositivo");
+    render();
+  }
+}
+function setSync(cls, text) { const el = $("#sync"); el.className = "sync " + cls; el.querySelector("span").textContent = text; }
+
+/* ---------- derived numbers ---------- */
+function derive() {
+  const txs = [], goals = [];
+  for (const d of S.items.values()) (d.kind === "tx" ? txs : d.kind === "goal" ? goals : []).push(d);
+  txs.sort((a, b) => b.ts - a.ts);
+  const total = txs.reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
+  const active = goals.filter(g => !g.done).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const done = goals.filter(g => g.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  const alloc = active.reduce((s, g) => s + (g.saved || 0), 0);
+  const now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  let mIn = 0, mOut = 0;
+  txs.forEach(t => { if (t.ts >= m0) t.type === "in" ? mIn += t.amount : mOut += t.amount; });
+  // savings pace: net of the last 90 days, per month
+  const since = Date.now() - 90 * 864e5;
+  const firstTs = txs.length ? txs[txs.length - 1].ts : Date.now();
+  const spanDays = Math.max(30, Math.min(90, (Date.now() - firstTs) / 864e5));
+  const net90 = txs.filter(t => t.ts >= since).reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
+  const perMonth = txs.length >= 3 ? net90 / spanDays * 30 : 0;
+  return { txs, total, active, done, alloc, free: total - alloc, mIn, mOut, perMonth };
+}
+
+/* ---------- render ---------- */
+let D = derive(), showAll = false, openMenu = null, openAdd = null;
+const imgSrc = img => !img ? "" : img.kind === "asset" ? (img.url || "/_blob/" + img.id) : img.kind === "svg" ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(img.svg) : img.kind === "data" ? img.data : "";
+
+function render() {
+  D = derive();
+  const t = $("#total"); t.textContent = money(D.total); t.classList.toggle("neg", D.total < 0);
+  $("#sFree").textContent = money(D.free);
+  $("#sAlloc").textContent = money(D.alloc);
+  $("#sIn").textContent = money(D.mIn);
+  $("#sOut").textContent = money(D.mOut);
+  $("#sMonthL").textContent = "Entrate di " + new Date().toLocaleDateString("it-IT", {month:"long"});
+  renderSpark(); renderLedger(); renderGoals();
+}
+
+function renderSpark() {
+  const el = $("#spark");
+  if (D.txs.length < 2) { el.innerHTML = ""; return; }
+  const days = 60, end = new Date(); end.setHours(23,59,59,999);
+  const start = end.getTime() - (days - 1) * 864e5;
+  let bal = D.txs.filter(t => t.ts < start - 864e5 + 1).reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
+  const asc = [...D.txs].reverse(); let i = 0; const pts = [];
+  while (i < asc.length && asc[i].ts < start - 864e5 + 1) i++;
+  for (let d = 0; d < days; d++) {
+    const dayEnd = start + d * 864e5;
+    while (i < asc.length && asc[i].ts <= dayEnd) { bal += asc[i].type === "in" ? asc[i].amount : -asc[i].amount; i++; }
+    pts.push(bal);
+  }
+  const W = 300, H = 60, min = Math.min(0, ...pts), max = Math.max(...pts, 1);
+  const x = k => k / (days - 1) * W, y = v => H - 4 - (v - min) / (max - min || 1) * (H - 10);
+  const line = pts.map((v, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/>
+    <path d="${line} L${W} ${H} L0 ${H}Z" fill="var(--brass-soft)" opacity=".7"/>
+    <path d="${line}" fill="none" stroke="var(--brass)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <circle cx="${x(days-1)}" cy="${y(pts[days-1])}" r="3.5" fill="var(--brass)"/>
+  </svg><div class="hint" style="text-align:right;margin-top:2px">ultimi 60 giorni</div>`;
+}
+
+function dayLabel(ts) {
+  const d = new Date(ts), today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.round((today - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+  if (diff === 0) return "Oggi"; if (diff === 1) return "Ieri";
+  return d.toLocaleDateString("it-IT", {weekday:"long", day:"numeric", month:"long"});
+}
+function renderLedger() {
+  const el = $("#ledger");
+  $("#txCount").textContent = D.txs.length ? D.txs.length + (D.txs.length === 1 ? " movimento" : " movimenti") : "";
+  if (S.mode === "boot") return;
+  if (!D.txs.length) {
+    el.innerHTML = `<div class="empty"><strong>Ancora nessun movimento</strong><span>Scrivi un importo qui sopra e premi Entrata per segnare il primo risparmio.</span></div>`;
+    return;
+  }
+  const list = showAll ? D.txs : D.txs.slice(0, 40);
+  let html = "", cur = "", sum = 0;
+  const groups = [];
+  list.forEach(t => { const k = new Date(t.ts).toDateString(); if (k !== cur) { cur = k; groups.push({ ts: t.ts, items: [] }); } groups[groups.length - 1].items.push(t); });
+  groups.forEach(g => {
+    const net = g.items.reduce((s, t) => s + (t.type === "in" ? t.amount : -t.amount), 0);
+    html += `<div class="day"><span>${esc(dayLabel(g.ts))}</span><span class="num">${net >= 0 ? "+" : "−"}${money(Math.abs(net))}</span></div>`;
+    g.items.forEach(t => {
+      const time = new Date(t.ts).toLocaleTimeString("it-IT", {hour:"2-digit", minute:"2-digit"});
+      html += `<div class="row">
+        <div class="dot ${t.type}">${t.type === "in" ? "+" : "−"}</div>
+        <div class="what"><b>${esc(t.note || t.cat || (t.type === "in" ? "Entrata" : "Uscita"))}</b><small>${esc(t.note && t.cat ? t.cat + " · " : "")}${time}</small></div>
+        <div class="amt ${t.type}">${t.type === "in" ? "+" : "−"}${money(t.amount)}</div>
+        <button class="x" data-del="${esc(t.id)}" aria-label="Elimina movimento">×</button>
+      </div>`;
+    });
+  });
+  if (D.txs.length > 40) html += `<button class="more" id="more">${showAll ? "Mostra meno" : "Mostra tutti (" + D.txs.length + ")"}</button>`;
+  el.innerHTML = html;
+}
+
+function eta(g) {
+  const left = g.price - (g.saved || 0);
+  if (left <= 0) return "Ci sei! Puoi comprarlo";
+  if (D.free >= left) return "Hai già i soldi liberi per completarlo";
+  if (D.perMonth <= 0) return "Mancano " + money(left);
+  const months = Math.ceil((left - Math.max(0, D.free)) / D.perMonth);
+  return months <= 1 ? "Al tuo ritmo: entro un mese" : months > 36 ? "Al tuo ritmo: oltre 3 anni" : "Al tuo ritmo: circa " + months + " mesi";
+}
+function renderGoals() {
+  const el = $("#goals");
+  if (S.mode === "boot") { el.innerHTML = ""; return; }
+  if (!D.active.length) {
+    el.innerHTML = `<div class="goal" style="grid-template-columns:1fr"><div class="empty"><strong>Cosa vuoi comprarti?</strong><span>Aggiungi un obiettivo con nome e prezzo: l'immagine del prodotto viene creata in automatico, oppure carichi tu il PNG.</span><button class="add-goal" data-new>+ Nuovo obiettivo</button></div></div>`;
+  } else {
+    el.innerHTML = D.active.map(g => {
+      const saved = g.saved || 0, pct = Math.min(100, g.price ? saved / g.price * 100 : 0), full = saved >= g.price;
+      const src = imgSrc(g.img);
+      const shot = src ? `<img src="${esc(src)}" alt="${esc(g.name)}">` : `<span class="ph">${esc((g.name || "?").trim().charAt(0).toUpperCase())}</span>`;
+      const adding = openAdd === g.id;
+      return `<article class="goal${full ? " full" : ""}" data-goal="${esc(g.id)}">
+        <button class="shot${g.imgStatus === "gen" ? " gen" : ""}" data-act="img" aria-label="Cambia immagine">${shot}</button>
+        <div class="goal-body">
+          <div class="goal-top"><h3>${esc(g.name)}</h3><button class="dots" data-act="menu" aria-label="Altre azioni">⋯</button></div>
+          <div class="bar" role="progressbar" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+          <div class="meta"><span><b>${money(saved)}</b> di <b>${money(g.price)}</b></span><span>${Math.round(pct)}%</span></div>
+          <div class="meta"><span>${esc(eta(g))}</span></div>
+          ${adding ? `<form class="gin" data-addform><input id="gadd-${esc(g.id)}" inputmode="decimal" placeholder="Quanto metti da parte?" aria-label="Importo da accantonare"><button class="gbtn prim" type="submit">Metti</button><button class="gbtn" type="button" data-act="take">Togli</button></form>`
+          : `<div class="gact">
+              ${full ? `<button class="gbtn ok" data-act="buy">Comprato ✓</button>` : `<button class="gbtn prim" data-act="add">+ Metti da parte</button><button class="gbtn" data-act="fill">Completa con il libero</button>`}
+            </div>`}
+        </div>
+        ${openMenu === g.id ? `<div class="menu" role="menu">
+          <button data-act="edit">Modifica nome e prezzo</button>
+          <button data-act="img">Carica un'altra immagine</button>
+          <button data-act="regen">Rigenera immagine automatica</button>
+          ${!full ? `<button data-act="buy">Segna come comprato</button>` : ""}
+          <button class="danger" data-act="remove">Elimina obiettivo</button>
+        </div>` : ""}
+      </article>`;
+    }).join("");
+    if (openAdd) setTimeout(() => document.getElementById("gadd-" + openAdd)?.focus(), 0);
+  }
+  $("#doneWrap").hidden = !D.done.length;
+  $("#doneList").innerHTML = D.done.map(g => `<div class="done-item">${imgSrc(g.img) ? `<img src="${esc(imgSrc(g.img))}" alt="">` : ""}<b>${esc(g.name)}</b><span class="num">${money(g.price)}</span><span>${new Date(g.doneAt).toLocaleDateString("it-IT",{day:"numeric",month:"short"})}</span><button class="x" data-del="${esc(g.id)}" aria-label="Togli dalla lista">×</button></div>`).join("");
+}
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg, undo) {
+  clearTimeout(toastTimer);
+  const r = $("#toastRoot");
+  r.innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span>${undo ? `<button id="undo">Annulla</button>` : ""}</div>`;
+  if (undo) $("#undo").onclick = () => { undo(); r.innerHTML = ""; };
+  toastTimer = setTimeout(() => r.innerHTML = "", undo ? 5000 : 3000);
+}
+
+/* ---------- quick add ---------- */
+let lastType = "out", cat = { out: null, in: null }, chipType = "out";
+function renderChips() {
+  $("#chips").innerHTML = CATS[chipType].map(c => `<button type="button" class="chip" aria-pressed="${cat[chipType] === c}" data-cat="${esc(c)}">${esc(c)}</button>`).join("")
+    + `<button type="button" class="chip" data-swap>${chipType === "out" ? "Categorie entrate →" : "← Categorie uscite"}</button>`;
+}
+$("#chips").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.hasAttribute("data-swap")) { chipType = chipType === "out" ? "in" : "out"; renderChips(); return; }
+  const c = b.dataset.cat; cat[chipType] = cat[chipType] === c ? null : c; renderChips();
+});
+function addTx(type) {
+  const amount = parseAmt($("#amt").value);
+  if (!amount) { toast("Scrivi prima un importo, per esempio 12,50"); $("#amt").focus(); return; }
+  if (S.mode === "boot") return;
+  lastType = type;
+  const doc = { id: uid(), kind: "tx", type, amount, cat: cat[type] || "", note: $("#note").value.trim().slice(0, 80), ts: Date.now() };
+  put(doc);
+  $("#amt").value = ""; $("#note").value = ""; cat[type] = null; renderChips();
+  toast((type === "in" ? "Entrata " : "Uscita ") + money(amount) + " segnata", () => del(doc.id));
+  $("#amt").focus();
+}
+$("#bOut").onclick = () => addTx("out");
+$("#bIn").onclick = () => addTx("in");
+$("#quick").addEventListener("submit", e => { e.preventDefault(); addTx(lastType); });
+$("#amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addTx(lastType); } });
+$("#note").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addTx(lastType); } });
+
+$("#ledger").addEventListener("click", e => {
+  if (e.target.id === "more") { showAll = !showAll; renderLedger(); return; }
+  const id = e.target.closest("[data-del]")?.dataset.del; if (!id) return;
+  const doc = getDoc(id); if (!doc) return;
+  del(id); toast("Movimento eliminato", () => put(doc));
+});
+$("#doneList").addEventListener("click", e => {
+  const id = e.target.closest("[data-del]")?.dataset.del; if (!id) return;
+  const doc = getDoc(id); del(id); toast("Tolto dalla lista", () => put(doc));
+});
+
+/* ---------- tabs ---------- */
+function setTab(g) {
+  $("#tabL").setAttribute("aria-selected", !g); $("#tabG").setAttribute("aria-selected", g);
+  $("#colL").dataset.hide = g ? "1" : "0"; $("#colG").dataset.hide = g ? "0" : "1";
+  try { localStorage.setItem(LOCAL_KEY + ".tab", g ? "g" : "l"); } catch {}
+}
+$("#tabL").onclick = () => setTab(false); $("#tabG").onclick = () => setTab(true);
+try { setTab(localStorage.getItem(LOCAL_KEY + ".tab") === "g"); } catch { setTab(false); }
+
+/* ---------- images ---------- */
+function loadImage(file) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(file); const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = u; });
+}
+async function prepareImage(file) {
+  const im = await loadImage(file);
+  const keepAlpha = /png|webp|gif|svg/.test(file.type);
+  const make = (max, q) => {
+    const k = Math.min(1, max / Math.max(im.naturalWidth || max, im.naturalHeight || max));
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round((im.naturalWidth || max) * k)); c.height = Math.max(1, Math.round((im.naturalHeight || max) * k));
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    return c;
+  };
+  if (S.assets) {
+    const c = make(700);
+    const blob = await new Promise(r => c.toBlob(r, keepAlpha ? "image/png" : "image/jpeg", .88));
+    try { const up = await S.assets.upload(blob); return { kind: "asset", id: up.id, url: up.url }; }
+    catch (e) { console.warn("upload failed, storing inline", e); }
+  }
+  const c = make(320);
+  return { kind: "data", data: c.toDataURL(keepAlpha ? "image/png" : "image/jpeg", .82) };
+}
+function cleanSvg(text) {
+  const m = String(text || "").match(/<svg[\s\S]*?<\/svg>/i); if (!m) return null;
+  let s = m[0].replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, "").replace(/(xlink:)?href\s*=\s*("(?!#)[^"]*"|'(?!#)[^']*')/gi, "");
+  if (!/xmlns=/.test(s)) s = s.replace(/<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  return s.length < 120000 ? s : null;
+}
+async function autoImage(goalId) {
+  const g = getDoc(goalId); if (!g) return;
+  if (!S.sample) { put({ ...g, imgStatus: "none" }); toast("Immagine automatica non disponibile qui: caricane una tu"); return; }
+  put({ ...g, imgStatus: "gen" });
+  try {
+    const prompt = `Disegna un'illustrazione SVG del prodotto "${g.name}" come se fosse la foto prodotto di un e-commerce trasformata in illustrazione vettoriale piatta.
+Regole:
+- Rispondi SOLO con un unico elemento <svg>…</svg>, niente altro testo, niente markdown.
+- viewBox="0 0 240 240", sfondo trasparente (nessun rettangolo di sfondo).
+- Il prodotto riconoscibile, centrato, che occupa circa l'80% dello spazio, vista di tre quarti o frontale.
+- Usa i colori reali tipici del prodotto, 4-8 colori pieni, qualche sfumatura (linearGradient) per volume e riflessi.
+- Una leggera ombra ellittica sotto il prodotto.
+- Nessun testo, nessun logo di marchi, nessuno script, nessuna immagine esterna, nessun foreignObject.`;
+    const r = await S.sample(prompt, { modelTier: "default", cache: false });
+    const svg = cleanSvg(r.text);
+    const now = getDoc(goalId); if (!now) return;
+    if (!svg) throw new Error("svg non valido");
+    put({ ...now, img: { kind: "svg", svg }, imgStatus: "ready" });
+  } catch (e) {
+    console.warn(e);
+    const now = getDoc(goalId); if (now) put({ ...now, imgStatus: "none" });
+    toast(e?.code === "not_granted" ? "Permesso negato: carica tu l'immagine del prodotto" : e?.code === "rate_limited" ? "Troppe richieste, riprova tra poco" : "Non sono riuscito a creare l'immagine. Caricala tu o riprova.");
+  }
+}
+let pickTarget = null;
+$("#filePick").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f || !pickTarget) return;
+  const id = pickTarget; pickTarget = null;
+  const g = getDoc(id); if (!g) return;
+  put({ ...g, imgStatus: "gen" });
+  try { const img = await prepareImage(f); put({ ...getDoc(id), img, imgStatus: "ready" }); }
+  catch { put({ ...getDoc(id), imgStatus: g.img ? "ready" : "none" }); toast("Non riesco a leggere questa immagine. Prova con un PNG o JPG."); }
+});
+
+/* ---------- goals ---------- */
+$("#addGoal").onclick = () => goalSheet();
+$("#goals").addEventListener("submit", e => {
+  e.preventDefault();
+  const id = e.target.closest("[data-goal]")?.dataset.goal; if (!id) return;
+  moveToGoal(id, parseAmt(e.target.querySelector("input").value));
+});
+$("#goals").addEventListener("click", e => {
+  if (e.target.closest("[data-new]")) { goalSheet(); return; }
+  const card = e.target.closest("[data-goal]"); const b = e.target.closest("[data-act]");
+  if (!card || !b) return;
+  const id = card.dataset.goal, g = getDoc(id), act = b.dataset.act;
+  if (act !== "menu") openMenu = null;
+  if (act === "menu") { openMenu = openMenu === id ? null : id; renderGoals(); }
+  else if (act === "add") { openAdd = id; renderGoals(); }
+  else if (act === "take") { moveToGoal(id, -parseAmt(card.querySelector("[data-addform] input").value)); }
+  else if (act === "fill") {
+    const need = g.price - (g.saved || 0), amt = Math.min(need, D.free);
+    if (amt <= 0) { toast("Non hai soldi liberi da mettere da parte"); renderGoals(); return; }
+    moveToGoal(id, amt);
+  }
+  else if (act === "img") { pickTarget = id; $("#filePick").click(); renderGoals(); }
+  else if (act === "regen") { autoImage(id); }
+  else if (act === "edit") { goalSheet(g); renderGoals(); }
+  else if (act === "buy") { buySheet(g); renderGoals(); }
+  else if (act === "remove") { renderGoals(); const copy = { ...g }; del(id); toast(`"${g.name}" eliminato${g.saved ? ": " + money(g.saved) + " tornano liberi" : ""}`, () => put(copy)); }
+});
+document.addEventListener("click", e => {
+  if (openMenu && !e.target.closest(".menu") && !e.target.closest("[data-act='menu']")) { openMenu = null; renderGoals(); }
+});
+function moveToGoal(id, amt) {
+  const g = getDoc(id); if (!g) return;
+  if (!amt) { toast("Scrivi un importo"); return; }
+  const saved = g.saved || 0;
+  if (amt > 0) {
+    if (D.free <= 0) { toast("Non hai soldi liberi: prima segna un'entrata"); return; }
+    amt = Math.min(amt, D.free);
+  } else amt = Math.max(amt, -saved);
+  if (!amt) { toast("Non c'è niente da togliere"); return; }
+  openAdd = null;
+  put({ ...g, saved: saved + amt });
+  toast(amt > 0 ? `${money(amt)} messi da parte per ${g.name}` : `${money(-amt)} tornati liberi`, () => { const n = getDoc(id); if (n) put({ ...n, saved: saved }); });
+}
+
+function modal(html, onMount) {
+  const r = $("#modalRoot");
+  r.innerHTML = `<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  const close = () => { r.innerHTML = ""; document.removeEventListener("keydown", onKey); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  $("#scrim").addEventListener("mousedown", e => { if (e.target.id === "scrim") close(); });
+  onMount(r.querySelector(".sheet"), close);
+}
+
+function goalSheet(existing) {
+  let file = null, previewUrl = existing ? imgSrc(existing.img) : "";
+  modal(`<h2>${existing ? "Modifica obiettivo" : "Nuovo obiettivo"}</h2>
+    <form id="gForm" style="display:grid;gap:14px" autocomplete="off">
+      <div class="field"><label for="gName">Cosa vuoi comprare?</label><input id="gName" required maxlength="60" placeholder="Es. AirPods Pro, bici da corsa, PlayStation 5" value="${esc(existing?.name || "")}"></div>
+      <div class="field"><label for="gPrice">Prezzo</label><input id="gPrice" inputmode="decimal" required placeholder="Es. 279,00" value="${existing ? esc((existing.price / 100).toFixed(2).replace(".", ",")) : ""}"></div>
+      <div class="field"><label>Immagine del prodotto</label>
+        <div class="drop" id="drop">
+          <div class="prev" id="prev">${previewUrl ? `<img src="${esc(previewUrl)}" alt="">` : `<span class="hint">auto</span>`}</div>
+          <p id="dropText">${existing ? "Lascia così, oppure " : "La creo io in automatico dal nome. Se preferisci "}<button type="button" class="linkbtn" id="pick">carica il PNG</button>, trascinalo qui o incollalo (⌘V).</p>
+        </div>
+      </div>
+      <div class="sheet-act"><button type="button" class="btn" id="gCancel">Annulla</button><button class="btn prim" type="submit">${existing ? "Salva" : "Crea obiettivo"}</button></div>
+    </form>`, (sheet, close) => {
+    const setFile = f => {
+      if (!f || !/^image\//.test(f.type)) return;
+      file = f; const u = URL.createObjectURL(f);
+      $("#prev").innerHTML = `<img src="${u}" alt="">`;
+      $("#dropText").innerHTML = `Userò <b>${esc(f.name || "l'immagine incollata")}</b>. <button type="button" class="linkbtn" id="pick">Cambia</button>`;
+      $("#pick").onclick = () => fp.click();
+    };
+    const fp = document.createElement("input"); fp.type = "file"; fp.accept = "image/*";
+    fp.onchange = () => setFile(fp.files[0]);
+    $("#pick").onclick = () => fp.click();
+    const drop = $("#drop");
+    drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); setFile(e.dataTransfer.files[0]); });
+    sheet.addEventListener("paste", e => { const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/")); if (it) { e.preventDefault(); setFile(it.getAsFile()); } });
+    $("#gCancel").onclick = close;
+    setTimeout(() => $("#gName").focus(), 30);
+    $("#gForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const name = $("#gName").value.trim(), price = parseAmt($("#gPrice").value);
+      if (!name) return;
+      if (!price) { toast("Scrivi il prezzo, per esempio 279,00"); $("#gPrice").focus(); return; }
+      close(); setTab(true);
+      const nameChanged = existing && existing.name !== name;
+      const g = existing ? { ...existing, name, price } : { id: uid(), kind: "goal", name, price, saved: 0, img: null, imgStatus: "none", done: false, createdAt: Date.now() };
+      if (file) g.imgStatus = "gen";
+      put(g);
+      if (file) {
+        try { const img = await prepareImage(file); put({ ...getDoc(g.id), img, imgStatus: "ready" }); }
+        catch { put({ ...getDoc(g.id), imgStatus: "none" }); toast("Non riesco a leggere questa immagine"); }
+      } else if (!existing || (nameChanged && existing.img?.kind === "svg") || !existing.img) {
+        autoImage(g.id);
+      }
+    });
+  });
+}
+
+function buySheet(g) {
+  modal(`<h2>Hai comprato ${esc(g.name)}?</h2>
+    <p style="margin:0;color:var(--muted)">Segno un'uscita di quanto l'hai pagato e sposto l'obiettivo tra quelli già comprati.</p>
+    <form id="bForm" style="display:grid;gap:14px">
+      <div class="field"><label for="bPrice">Prezzo pagato</label><input id="bPrice" inputmode="decimal" value="${esc((g.price / 100).toFixed(2).replace(".", ","))}"></div>
+      <div class="sheet-act"><button type="button" class="btn" id="bCancel">Non ancora</button><button class="btn prim" type="submit">Sì, comprato</button></div>
+    </form>`, (sheet, close) => {
+    $("#bCancel").onclick = close;
+    $("#bForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const paid = parseAmt($("#bPrice").value) || g.price;
+      close();
+      const tx = { id: uid(), kind: "tx", type: "out", amount: paid, cat: "Obiettivo", note: g.name, ts: Date.now() };
+      put(tx);
+      put({ ...getDoc(g.id), done: true, doneAt: Date.now(), price: paid, saved: 0 });
+      toast(`Goditi ${g.name}! Segnata un'uscita di ${money(paid)}`);
+    });
+  });
+}
+
+renderChips();
+render();
+boot().catch(e => { console.error(e); S.mode = "local"; loadLocal(); setSync("local", "Salvato solo su questo dispositivo"); render(); });
+})();
+</script>

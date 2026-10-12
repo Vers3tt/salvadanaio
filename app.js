@@ -328,20 +328,35 @@ function renderSetup() {
   $("#app").innerHTML = `<div class="auth"><form class="box" id="setupForm" autocomplete="off">
     <img class="logo" src="icons/icon-192.png" alt="">
     <h1>Salvadanaio</h1>
-    <p>Per avere gli stessi dati su telefono e computer collega il tuo progetto Supabase.</p>
+    <p>Collega il tuo progetto Supabase per avere gli stessi dati su telefono e computer.</p>
+    <div class="list steps">
+      <div class="cell"><span><b>1.</b> Crea un progetto gratuito su <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a></span></div>
+      <div class="cell"><span><b>2.</b> In <b>SQL Editor</b> incolla il codice e premi Run</span><button type="button" class="link" id="copySql">Copia SQL</button></div>
+      <div class="cell"><span><b>3.</b> In <b>Authentication → Sign In / Providers → Email</b> disattiva <b>Confirm email</b></span></div>
+      <div class="cell"><span><b>4.</b> In <b>Project Settings → API</b> copia URL e anon key qui sotto</span></div>
+    </div>
     <div class="fields">
-      <div class="field"><input id="sUrl" placeholder="URL progetto (https://…supabase.co)" inputmode="url" value="${esc(cfg.supabaseUrl || "")}"></div>
-      <div class="field"><input id="sKey" placeholder="anon public key" value="${esc(cfg.supabaseAnonKey || "")}"></div>
+      <div class="field"><input id="sUrl" placeholder="Project URL (https://…supabase.co)" inputmode="url" autocapitalize="off" spellcheck="false" value="${esc(cfg.supabaseUrl || "")}"></div>
+      <div class="field"><input id="sKey" placeholder="anon public key" autocapitalize="off" spellcheck="false" value="${esc(cfg.supabaseAnonKey || "")}"></div>
     </div>
     <div class="err" id="sErr"></div>
     <button class="save" type="submit">Collega</button>
-    <button class="alt" type="button" id="localOnly">Usa solo su questo dispositivo</button>
+    <button class="alt" type="button" id="localOnly">Per ora usa solo su questo dispositivo</button>
+    <p class="hint" style="text-align:center">Quello che segni adesso verrà caricato su Supabase quando lo colleghi da Altro.</p>
   </form></div>`;
   $("#localOnly").onclick = () => { S.mode = "local"; save(); render(); };
+  $("#copySql").onclick = async () => {
+    try {
+      const sql = await (await fetch("supabase.sql", { cache: "no-store" })).text();
+      await navigator.clipboard.writeText(sql);
+      toast("Codice SQL copiato: incollalo in SQL Editor");
+    } catch { window.open("supabase.sql", "_blank"); }
+  };
   $("#setupForm").onsubmit = e => {
     e.preventDefault();
     const url = $("#sUrl").value.trim().replace(/\/+$/, ""), key = $("#sKey").value.trim();
-    if (!/^https:\/\/.+/.test(url) || key.length < 20) { $("#sErr").textContent = "Controlla URL e chiave: li trovi in Project Settings → API."; return; }
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/i.test(url) && !/^https:\/\/.+/.test(url)) { $("#sErr").textContent = "L'URL deve iniziare con https:// (lo trovi in Project Settings → API)."; return; }
+    if (key.length < 20) { $("#sErr").textContent = "La chiave sembra incompleta: copia tutta la anon public key."; return; }
     cfg = { supabaseUrl: url, supabaseAnonKey: key };
     try { localStorage.setItem(CFG_LS, JSON.stringify(cfg)); } catch {}
     startCloud();
@@ -352,7 +367,7 @@ function renderLogin() {
   const draw = () => {
     $("#app").innerHTML = `<div class="auth"><form class="box" id="loginForm">
       <img class="logo" src="icons/icon-192.png" alt="">
-      <h1>${signup ? "Crea il tuo account" : "Bentornato"}</h1>
+      <h1>${signup ? "Crea il tuo account" : "Accedi"}</h1>
       <p>${signup ? "Serve solo la prima volta. Poi accedi con la stessa email su ogni dispositivo." : "Accedi per vedere i tuoi risparmi."}</p>
       <div class="fields">
         <div class="field"><input id="lEmail" type="email" autocomplete="email" placeholder="Email" required></div>
@@ -402,9 +417,30 @@ function startCloud() {
     const had = !!session; session = s;
     if (!authReady) return;
     if (ev === "SIGNED_OUT") { S.tx = {}; S.goals = {}; S.pending = []; save(); }
-    if (!!s !== had || ev === "SIGNED_IN") { render(); if (s) sync(); }
+    if (!!s !== had || ev === "SIGNED_IN") { render(); if (s) { sync(); live(); } }
+    if (!s) live(false);
   });
-  sb.auth.getSession().then(({ data }) => { session = data.session; authReady = true; render(); if (session) sync(); });
+  sb.auth.getSession().then(({ data }) => { session = data.session; authReady = true; render(); if (session) { sync(); live(); } });
+}
+
+/* realtime: changes made on another device show up here within a second */
+let channel = null;
+function live(on = true) {
+  if (channel) { sb.removeChannel(channel); channel = null; }
+  if (!on || !sb || !session) return;
+  const apply = (table, store, norm) => p => {
+    const id = (p.new && p.new.id) || (p.old && p.old.id);
+    if (!id || S.pending.some(op => op.t === table && (op.id || op.row.id) === id)) return;
+    if (p.eventType === "DELETE") delete S[store][id];
+    else S[store][id] = norm(p.new);
+    save(); render();
+  };
+  channel = sb.channel("salvadanaio-" + session.user.id)
+    .on("postgres_changes", { event: "*", schema: "public", table: "transactions" },
+      apply("transactions", "tx", r => ({ ...pick(r, COLS.transactions), amount: +r.amount, ts: +r.ts })))
+    .on("postgres_changes", { event: "*", schema: "public", table: "goals" },
+      apply("goals", "goals", r => ({ ...pick(r, COLS.goals), price: +r.price, created_at: +r.created_at, done_at: r.done_at && +r.done_at })))
+    .subscribe();
 }
 
 /* ============ toast & sheets ============ */
@@ -734,5 +770,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) sync
 if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
 else render();
 snapshotReached();
+navigator.storage?.persist?.().catch(() => {});
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

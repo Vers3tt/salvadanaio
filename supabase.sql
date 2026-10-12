@@ -37,3 +37,14 @@ create policy "solo i miei movimenti" on public.transactions
 drop policy if exists "solo i miei obiettivi" on public.goals;
 create policy "solo i miei obiettivi" on public.goals
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Aggiornamenti in tempo reale tra i dispositivi
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'transactions') then
+    alter publication supabase_realtime add table public.transactions;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'goals') then
+    alter publication supabase_realtime add table public.goals;
+  end if;
+end $$;
