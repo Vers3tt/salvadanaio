@@ -50,12 +50,15 @@ def token_action():
     return acts, var_text(fid2, "File")
 
 def forget_bad_code(msg_uuid):
-    """Se il server dice che il codice non vale più, cancella quello salvato: la prossima volta lo richiede."""
+    """Se il server dice che il codice non vale più, cancella quello salvato: la prossima volta lo richiede.
+    Usa una ricerca di testo + "Se … ha un valore" (la condizione "contiene" non viene importata bene)."""
     if TOKEN: return []
-    g, fid = U(), U()
+    g, mid, fid = U(), U(), U()
     return [
-        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 99,
-            "WFConditionalActionString": "Codice non valido", "WFInput": {"Type": "Variable", "Variable": var_attach(msg_uuid, "Dictionary Value")}}),
+        act("is.workflow.actions.text.match", {"UUID": mid, "WFMatchTextPattern": "Codice non valido", "WFMatchTextCaseSensitive": False,
+            "text": var_text(msg_uuid, "Dictionary Value")}),
+        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 100,
+            "WFInput": {"Type": "Variable", "Variable": var_attach(mid, "Matches")}}),
         act("is.workflow.actions.documentpicker.open", {"UUID": fid, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": False, "WFShowFilePicker": False}),
         act("is.workflow.actions.file.delete", {"WFInput": var_attach(fid, "File"), "WFDeleteFileConfirmDeletion": False}),
         act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 2, "UUID": U()}),
