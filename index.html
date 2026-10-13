@@ -497,8 +497,18 @@ button.crow{width:100%;text-align:left}
 .padv{margin:0;font-size:14.5px;padding:10px 12px;border-radius:10px;background:var(--fill2)}
 .padv.good{background:var(--green-soft);color:var(--green)}
 .padv.wait{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
-.pspark{display:block;width:100%;height:46px}
-.pspark-x{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink3)}
+.pchart{margin:4px 0 2px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.pplot{position:relative;height:130px;margin-top:40px}
+.pplot svg{display:block;width:100%;height:100%;overflow:visible}
+.pdot{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px var(--card);transform:translate(-50%,-50%);pointer-events:none}
+.pdot.low{background:var(--green);width:10px;height:10px}
+.pdot.last{width:10px;height:10px}
+.pref{position:absolute;right:0;transform:translateY(-120%);font-size:11px;color:var(--ink3);background:var(--card);padding:0 2px;pointer-events:none}
+.pcross{position:absolute;top:0;bottom:0;width:1px;background:var(--ink3);pointer-events:none}
+.ptip{position:absolute;bottom:calc(100% + 4px);transform:translateX(-50%);background:var(--ink);color:var(--on-ink);border-radius:8px;padding:4px 8px;font-size:12px;white-space:nowrap;display:grid;text-align:center;pointer-events:none}
+.ptip b{font-size:13.5px}
+.pchart-x{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--ink3);margin-top:6px}
+.pchart-x .plow{color:var(--green);font-weight:600}
 .gdate.deal{color:var(--green);font-weight:600}
 .peek{margin:8px 4px 0;font-size:13.5px;color:var(--ink2);min-height:0}
 .peek:empty{display:none}

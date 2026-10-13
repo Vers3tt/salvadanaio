@@ -1644,13 +1644,48 @@ function priceAdvice(h, g) {
   if (diff >= 5) return { text: `È il ${diff}% sopra la media (${money(Math.round(avg))}). Il più basso visto è ${money(min)}: se puoi, aspetta.`, tone: "wait" };
   return { text: `Prezzo nella media degli ultimi controlli. Il più basso visto è ${money(min)}.`, tone: "" };
 }
-function priceSpark(h) {
-  if (!h || h.length < 2) return "";
-  const W = 300, H = 46, ps = h.map(x => x.p), min = Math.min(...ps), max = Math.max(...ps);
-  const x = k => k / (h.length - 1) * W, y = v => H - 4 - (v - min) / (max - min || 1) * (H - 8);
-  const d = h.map((q, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(q.p).toFixed(1)).join(" ");
-  return `<svg class="pspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--ink)" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
-    <div class="pspark-x"><span>${esc(fmtDate(h[0].t, { day: "numeric", month: "short" }))}</span><span>min ${money(min)} · max ${money(max)}</span></div>`;
+let priceHist = [];
+function priceChart(h, g) {
+  if (!h || !h.length) return "";
+  const fd = t => fmtDate(t, { day: "numeric", month: "short" });
+  if (h.length === 1) return `<p class="pnote">Primo prezzo registrato il ${esc(fd(h[0].t))}: ${money(h[0].p)}. Il grafico compare da domani mattina, dopo il prossimo controllo.</p>`;
+  priceHist = h;
+  const W = 600, H = 150, ps = h.map(x => x.p), ref = g.price;
+  let min = Math.min(...ps, ref), max = Math.max(...ps, ref);
+  const pad = (max - min) * .12 || max * .05 || 100; min -= pad; max += pad;
+  const t0 = h[0].t, t1 = h[h.length - 1].t, span = t1 - t0 || 1;
+  const x = t => (t - t0) / span * W, y = v => H - (v - min) / (max - min) * H;
+  const d = h.map((q, k) => (k ? "L" : "M") + x(q.t).toFixed(1) + " " + y(q.p).toFixed(1)).join(" ");
+  const low = Math.min(...ps), lowIdx = ps.lastIndexOf(low);
+  const pts = h.map((q, k) => {
+    const cls = k === lowIdx ? "low" : k === h.length - 1 ? "last" : "";
+    return `<span class="pdot ${cls}" style="left:${x(q.t) / W * 100}%;top:${y(q.p) / H * 100}%"></span>`;
+  }).join("");
+  return `<div class="pchart" data-pchart>
+      <div class="pplot">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--ink3)" stroke-dasharray="5 6" vector-effect="non-scaling-stroke"/>
+          <path d="${d} L${W} ${H} L0 ${H}Z" fill="var(--ink)" opacity=".05"/>
+          <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        </svg>
+        ${pts}
+        <span class="pref" style="top:${y(ref) / H * 100}%">tuo prezzo ${esc(moneyShort(ref))}</span>
+        <span class="pcross" hidden></span><div class="ptip" hidden></div>
+      </div>
+      <div class="pchart-x"><span>${esc(fd(t0))}</span><span class="plow">min ${money(low)} · ${esc(fd(h[lowIdx].t))}</span><span>${esc(fd(t1))}</span></div>
+    </div>`;
+}
+function priceHover(el, clientX) {
+  if (!priceHist.length) return;
+  const plot = el.querySelector(".pplot"), r = plot.getBoundingClientRect();
+  const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  const t0 = priceHist[0].t, span = (priceHist[priceHist.length - 1].t - t0) || 1, at = t0 + f * span;
+  let k = 0; priceHist.forEach((q, i) => { if (Math.abs(q.t - at) < Math.abs(priceHist[k].t - at)) k = i; });
+  const q = priceHist[k], left = (q.t - t0) / span * 100;
+  const cross = plot.querySelector(".pcross"), tip = plot.querySelector(".ptip");
+  cross.hidden = tip.hidden = false; cross.style.left = left + "%";
+  tip.innerHTML = `<span>${esc(fmtDate(q.t, { weekday: "short", day: "numeric", month: "short" }))}</span><b class="num">${money(q.p)}</b>`;
+  tip.style.left = Math.max(12, Math.min(88, left)) + "%";
 }
 function priceBox(g, h) {
   if (legacyPrice) return `<div class="ptop"><b>Prezzo sul sito</b></div><p class="pnote">Per seguire il prezzo esegui su Supabase l'aggiornamento SQL dei prezzi (aggiornamento-5.sql).</p>`;
@@ -1659,7 +1694,7 @@ function priceBox(g, h) {
   return `<div class="ptop"><b>Prezzo su ${esc(hostOf(g.url))}</b><button class="link" data-pcheck>${ic("sync", 15)}Controlla ora</button></div>
     ${g.last_price ? `<div class="pnow"><span class="num">${money(g.last_price)}</span>${g.last_price !== g.price ? `<small class="${g.last_price < g.price ? "pos" : "neg"}">${g.last_price < g.price ? "−" : "+"}${money(Math.abs(g.last_price - g.price))} rispetto al tuo obiettivo</small>` : ""}</div>`
       : `<p class="pnote">${esc(g.price_note || (g.last_checked ? "Prezzo non disponibile" : "Primo controllo in corso: torna tra qualche minuto."))}</p>`}
-    ${h === null ? "" : priceSpark(h)}
+    ${h === null ? "" : priceChart(h, g)}
     ${adv ? `<p class="padv ${adv.tone}">${esc(adv.text)}</p>` : ""}
     ${g.last_price && g.last_price !== g.price ? `<button class="pill sm" data-puse>Usa ${esc(money(g.last_price))} come prezzo dell'obiettivo</button>` : ""}
     ${when ? `<p class="pwhen">Controllato ${esc(when)} · si aggiorna ogni mattina</p>` : ""}`;
@@ -1882,7 +1917,8 @@ document.addEventListener("click", e => {
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });
-document.addEventListener("pointermove", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
+document.addEventListener("pointermove", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
+document.addEventListener("pointerdown", e => { const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
 document.addEventListener("pointerdown", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
 document.addEventListener("pointerout", e => { const c = e.target.closest("[data-chart=balance]"); if (c && !c.contains(e.relatedTarget)) chartLeave(c); });
 document.addEventListener("input", e => {
