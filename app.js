@@ -938,6 +938,7 @@ function txSheet(type, existing) {
     </div>
     <div class="keypad" id="keypad">${["1","2","3","4","5","6","7","8","9",",","0","⌫"].map(k => `<button type="button" data-k="${k}" aria-label="${k === "⌫" ? "Cancella" : k}">${k}</button>`).join("")}</div>
     <button class="save" id="txSave">Salva</button>
+    ${existing && accounts().length && !isTransfer(existing) ? `<button class="save ghost" id="txSplit">${ic("transfer", 18)}Dividi tra più conti</button>` : ""}
     ${existing ? `<button class="save danger" id="txDel">Elimina movimento</button>` : ""}
   `, (sh, close) => {
     const draw = () => {
@@ -1024,6 +1025,7 @@ function txSheet(type, existing) {
       celebrateIfReached(before ? before : null);
     };
     if (existing) $("#txDel").onclick = () => { const c = { ...existing }; close(); delTx(c.id); toast("Movimento eliminato", () => putTx(c)); };
+    if ($("#txSplit")) $("#txSplit").onclick = () => splitSheet(existing);
     draw();
   });
 }
@@ -1221,15 +1223,19 @@ function goalSheet(id) {
     $("#gBuy").onclick = () => {
       $("#gBuy").hidden = true;
       $("#buyBox").innerHTML = `<div class="confirm" style="background:var(--green-soft)">
-        <p>Segno un'uscita per quanto l'hai pagato e lo sposto tra i comprati.</p>
-        <div class="field"><label for="paid">Pagato €</label><input id="paid" inputmode="decimal" style="text-align:right" value="${esc(centsToInput(g.price))}"></div>
+        <p>Segno l'uscita per quanto l'hai pagato e lo sposto tra i comprati.${accounts().length ? " Se hai pagato con più conti o con un buono, dividi il pagamento." : ""}</p>
+        <div id="payRows"></div>
         <div class="btnrow"><button class="save ghost" id="buyNo">Annulla</button><button class="save in" id="buyYes">Conferma</button></div></div>`;
+      const pay = paymentRows($("#payRows"), [{ acc: lastAccount(), amount: g.price }], { label: "Pagato", total: g.price });
       $("#buyNo").onclick = () => { $("#buyBox").innerHTML = ""; $("#gBuy").hidden = false; };
       $("#buyYes").onclick = () => {
-        const paid = parseAmt($("#paid").value) || g.price;
-        const tx = { id: uuid(), type: "out", amount: paid, cat: "Obiettivo", note: g.name, ts: Date.now() };
-        close(); putTx(tx); putGoal({ ...g, price: paid, done: true, done_at: Date.now() });
-        toast(`${g.name} comprato: uscita di ${money(paid)} segnata`);
+        const rows = pay.rows().filter(r => r.amount > 0);
+        if (!rows.length) { toast("Scrivi quanto l'hai pagato"); return; }
+        const paid = rows.reduce((a, r) => a + r.amount, 0), ts = Date.now();
+        close();
+        rows.forEach(r => { const t = { id: uuid(), type: "out", amount: r.amount, cat: "Obiettivo", note: g.name, ts, account: r.acc || null }; S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); });
+        putGoal({ ...g, price: paid, done: true, done_at: ts });
+        toast(rows.length > 1 ? `${g.name} comprato: ${money(paid)} divisi su ${rows.length} conti` : `${g.name} comprato: uscita di ${money(paid)} segnata`);
         snapshotReached();
       };
     };
@@ -1779,6 +1785,60 @@ function parseReceipt(text) {
   if (dm) { let [, d, mo, y] = dm.map(Number); if (y < 100) y += 2000; if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2015) date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
   const cat = (SHOP_CATS.find(([re]) => re.test(text)) || [])[1] || "";
   return { total, shop: shop ? shop.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) : "", date, cat };
+}
+
+/* ============ pagamenti divisi tra conti ============ */
+// rows of [account, amount]; "+ altro conto" adds a row with what is still missing
+function paymentRows(el, initial, { label = "Importo", total = 0 } = {}) {
+  let rows = initial.map(r => ({ ...r }));
+  const accs = accounts();
+  const draw = () => {
+    const sum = rows.reduce((a, r) => a + (r.amount || 0), 0);
+    el.innerHTML = rows.map((r, i) => `<div class="payrow">
+        ${accs.length ? `<select data-pacc="${i}" aria-label="Conto">${[["", "Nessun conto"], ...accs.map(a => [a.id, a.name])].map(([id, n]) => `<option value="${esc(id)}"${r.acc === id ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>` : `<span class="paylabel">${esc(label)} €</span>`}
+        <input data-pamt="${i}" inputmode="decimal" value="${r.amount ? esc(centsToInput(r.amount)) : ""}" placeholder="0,00" aria-label="Importo">
+        ${rows.length > 1 ? `<button class="payx" data-pdel="${i}" aria-label="Togli">${ic("close", 16)}</button>` : ""}
+      </div>`).join("")
+      + (accs.length ? `<div class="payfoot"><button class="link" data-padd>${ic("plus", 15)}Paga anche con un altro conto</button><span class="num">${rows.length > 1 ? "Totale " + money(sum) : ""}${total && sum !== total ? ` · ${sum < total ? "mancano" : "in più"} ${money(Math.abs(total - sum))}` : ""}</span></div>` : "");
+  };
+  el.addEventListener("input", e => {
+    const a = e.target.closest("[data-pamt]"); if (a) { rows[+a.dataset.pamt].amount = parseAmt(a.value); const f = el.querySelector(".payfoot span"); if (f) { const sum = rows.reduce((x, r) => x + (r.amount || 0), 0); f.textContent = (rows.length > 1 ? "Totale " + money(sum) : "") + (total && sum !== total ? ` · ${sum < total ? "mancano" : "in più"} ${money(Math.abs(total - sum))}` : ""); } }
+  });
+  el.addEventListener("change", e => { const s = e.target.closest("[data-pacc]"); if (s) rows[+s.dataset.pacc].acc = s.value; });
+  el.addEventListener("click", e => {
+    if (e.target.closest("[data-padd]")) {
+      const target = total;
+      const sum = rows.reduce((a, r) => a + (r.amount || 0), 0);
+      const used = new Set(rows.map(r => r.acc));
+      rows.push({ acc: (accs.find(a => !used.has(a.id)) || accs[0]).id, amount: Math.max(0, (target || 0) - sum) });
+      draw(); el.querySelectorAll("[data-pamt]")[rows.length - 1]?.focus();
+    }
+    const d = e.target.closest("[data-pdel]"); if (d) { rows.splice(+d.dataset.pdel, 1); draw(); }
+  });
+  draw();
+  return { rows: () => rows };
+}
+function splitSheet(tx) {
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Dividi tra conti</h3><button class="r" id="spGo">Salva</button></div>
+    <p class="hint" style="margin:0 4px 12px">${esc(tx.note || catInfo(tx.type, tx.cat)[0])} · ${money(tx.amount)}. Scegli quanto è uscito da ogni conto, per esempio una parte dal buono e il resto da Hype.</p>
+    <div class="card qcode" id="spRows"></div>`, (sh, close) => {
+    const pay = paymentRows($("#spRows"), [{ acc: tx.account || lastAccount(), amount: tx.amount }], { total: tx.amount });
+    sh.querySelector("[data-x]").onclick = close;
+    $("#spGo").onclick = () => {
+      const rows = pay.rows().filter(r => r.amount > 0);
+      const sum = rows.reduce((a, r) => a + r.amount, 0);
+      if (!rows.length) { toast("Scrivi almeno un importo"); return; }
+      if (sum !== tx.amount) { toast(`La somma è ${money(sum)}: deve fare ${money(tx.amount)}`); return; }
+      const before = { ...tx }, created = [];
+      rows.forEach((r, i) => {
+        const t = i === 0 ? { ...tx, amount: r.amount, account: r.acc || null } : { ...tx, id: uuid(), amount: r.amount, account: r.acc || null };
+        if (i) created.push(t.id);
+        S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) });
+      });
+      close(); commit();
+      toast(`Diviso su ${rows.length} conti`, () => { created.forEach(id => delTx(id)); putTx(before); });
+    };
+  });
 }
 
 /* ============ events ============ */
