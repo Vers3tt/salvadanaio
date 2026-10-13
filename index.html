@@ -221,6 +221,8 @@ input{border:0;outline:none;background:none}
 .auth h1{text-align:center;margin:0;font-family:var(--font-d);font-size:28px;letter-spacing:-.025em}
 .auth p{text-align:center;color:var(--ink2);margin:0 0 6px}
 .auth .err{color:var(--neg);font-size:14px;text-align:center;min-height:1em}
+.auth .err.ok{color:var(--green);background:var(--green-soft);border-radius:10px;padding:10px 12px}
+.auth .err:empty{padding:0;background:none}
 .auth .alt{color:var(--ink);text-align:center;font-size:15px;font-weight:500;padding:6px}
 .steps .cell{font-size:14.5px;align-items:flex-start}
 .steps .cell span:first-child{color:var(--ink);white-space:normal;text-align:left;overflow:visible}
@@ -474,6 +476,25 @@ button.crow{width:100%;text-align:left}
 .cdot[aria-pressed="true"]{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--ink)}
 .row small .adot{width:7px;height:7px}
 .goal-strip{scroll-padding-inline:16px}
+/* prezzi */
+.pricebox{background:var(--card);border-radius:14px;padding:14px 16px;display:grid;gap:8px;margin:2px 0 12px;transition:opacity .2s}
+.pricebox.busy{opacity:.55}
+.pricebox.busy [data-pcheck] .i{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ptop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ptop b{font-weight:600;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptop .link{display:flex;align-items:center;gap:5px;font-size:14px;color:var(--ink);white-space:nowrap}
+.pnow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pnow span{font-family:var(--font-d);font-size:28px;font-weight:700;letter-spacing:-.02em}
+.pnow small{font-size:13px;font-weight:600}
+.pnote,.pwhen{margin:0;color:var(--ink2);font-size:13.5px}
+.pwhen{font-size:12.5px}
+.padv{margin:0;font-size:14.5px;padding:10px 12px;border-radius:10px;background:var(--fill2)}
+.padv.good{background:var(--green-soft);color:var(--green)}
+.padv.wait{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.pspark{display:block;width:100%;height:46px}
+.pspark-x{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink3)}
+.gdate.deal{color:var(--green);font-weight:600}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}

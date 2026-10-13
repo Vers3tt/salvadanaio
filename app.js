@@ -172,6 +172,8 @@ function warnSchema() {
   toast("Budget e ricorrenti restano su questo dispositivo finché non esegui l'aggiornamento SQL su Supabase");
 }
 const NEW_GOAL_COLS = ["url", "deadline"];
+const PRICE_COLS = ["last_price", "last_checked", "price_note"];
+let legacyPrice = false; // price tracking columns not created yet
 let legacyTx = false; // true while the database still lacks transactions.account
 const missingAccCol = e => /account/.test(String(e?.message || "")) && /column|schema/i.test(String(e?.message || ""));
 function warnLegacyTx() {
@@ -226,10 +228,12 @@ async function fetchAll(table) {
   const out = [], step = 1000;
   for (let from = 0; ; from += step) {
     const cols = table === "goals" && legacyGoals ? COLS.goals.filter(c => !NEW_GOAL_COLS.includes(c))
+      : table === "goals" && !legacyPrice ? [...COLS.goals, ...PRICE_COLS]
       : table === "transactions" && legacyTx ? COLS.transactions.filter(c => c !== "account") : COLS[table];
     const { data, error } = await sb.from(table).select(cols.join(",")).range(from, from + step - 1);
     if (error && table === "goals" && !legacyGoals && missingCol(error)) { warnLegacy(); from -= step; continue; }
     if (error && table === "transactions" && !legacyTx && missingAccCol(error)) { warnLegacyTx(); from -= step; continue; }
+    if (error && table === "goals" && !legacyPrice && /last_price|last_checked|price_note/.test(error.message || "")) { legacyPrice = true; from -= step; continue; }
     if (error) throw error;
     out.push(...data);
     if (data.length < step) return out;
@@ -593,6 +597,7 @@ function goalCard(g) {
     <div class="prog"><i style="width:${pct}%"></i></div>
     <div class="gmeta"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><span class="num">${money(g.price)}</span></div>
     ${g.deadline ? `<div class="gdate">${ic("calendar", 14)}<span>entro ${esc(fmtDate(g.deadline + "T12:00", { day: "numeric", month: "short" }))}</span></div>` : ""}
+    ${g.last_price && g.last_price < g.price ? `<div class="gdate deal">${ic("label", 14)}<span>ora a ${esc(money(g.last_price))}</span></div>` : ""}
   </button>`;
 }
 function goalsScreen() {
@@ -720,28 +725,33 @@ function renderLogin() {
       <button class="save" type="submit" id="lGo">${signup ? "Crea account" : "Accedi"}</button>
       ${signup ? "" : `<button class="alt" type="button" id="lForgot" style="color:var(--ink2)">Password dimenticata?</button>`}
       <button class="alt" type="button" id="lSwap">${signup ? "Ho già un account" : "Prima volta? Crea un account"}</button>
-      <button class="alt" type="button" id="lLocal" style="color:var(--label2)">Usa senza account, solo su questo dispositivo</button>
+      <button class="alt" type="button" id="lLocal" style="color:var(--ink2)">Usa senza account, solo su questo dispositivo</button>
     </form></div>`;
     $("#lSwap").onclick = () => { signup = !signup; draw(); };
     if ($("#lForgot")) $("#lForgot").onclick = async () => {
       const email = $("#lEmail").value.trim();
-      if (!/.+@.+\..+/.test(email)) { $("#lErr").textContent = "Scrivi la tua email qui sopra, poi tocca di nuovo Password dimenticata."; $("#lEmail").focus(); return; }
+      if (!/.+@.+\..+/.test(email)) { authMsg("Scrivi la tua email qui sopra, poi tocca di nuovo Password dimenticata."); $("#lEmail").focus(); return; }
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-      $("#lErr").textContent = error ? italianAuthError(error) : "Ti ho mandato un'email con il link per scegliere una nuova password.";
+      authMsg(error ? italianAuthError(error) : "Ti ho mandato un'email con il link per scegliere una nuova password.", !error);
     };
     $("#lLocal").onclick = () => { S.mode = "local"; save(); render(); };
     $("#loginForm").insertAdjacentHTML("beforeend", `<p class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></p>`);
     $("#loginForm").onsubmit = async e => {
       e.preventDefault();
       const email = $("#lEmail").value.trim(), password = $("#lPass").value;
-      $("#lGo").disabled = true; $("#lErr").textContent = "";
+      $("#lGo").disabled = true; authMsg("");
       const { data, error } = signup ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
       $("#lGo").disabled = false;
-      if (error) { $("#lErr").textContent = italianAuthError(error); return; }
-      if (signup && !data.session) { $("#lErr").textContent = "Account creato. Conferma l'email dal link che ti è arrivato, poi accedi."; signup = false; return; }
+      if (error) { authMsg(italianAuthError(error)); return; }
+      if (signup && !data.session) { const email = $("#lEmail").value; signup = false; draw(); $("#lEmail").value = email; authMsg("Account creato. Apri l'email che ti è arrivata e conferma l'indirizzo, poi accedi qui.", true); return; }
     };
   };
   draw();
+}
+// one place for messages under the sign-in form: errors in red, confirmations in green
+function authMsg(text, ok = false) {
+  const el = $("#lErr"); if (!el) return;
+  el.textContent = text; el.classList.toggle("ok", ok);
 }
 function italianAuthError(e) {
   const m = String(e.message || "");
@@ -1006,6 +1016,7 @@ function goalEditSheet(existing) {
       const deadline = $("#gDate").value || null;
       const g = existing ? { ...existing, name, price, img, url: url || null, deadline } : { id: uuid(), name, price, img, url: url || null, deadline, done: false, done_at: null, created_at: Date.now() };
       close(); putGoal(g); if (!existing && tab !== "goals" && tab !== "home") setTab("goals");
+      if (g.url && g.url !== existing?.url) setTimeout(() => checkPrice(g.id, true), 1500);
       toast(existing ? "Obiettivo aggiornato" : `${name} aggiunto agli obiettivi`);
       celebrateIfReached();
     };
@@ -1044,6 +1055,7 @@ function goalSheet(id) {
       <p class="eta">${esc(eta(g))}</p>
       ${g.deadline && !ok ? `<div class="plan">${ic("calendar", 18)}<span>${esc(deadlinePlan(g))}</span></div>` : ""}
     </div>
+    ${g.url && S.mode === "cloud" ? `<div class="pricebox" id="priceBox">${priceBox(g, null)}</div>` : ""}
     ${g.url ? `<a class="save ghost linkbtn" href="${esc(g.url)}" target="_blank" rel="noopener">${ic("external", 18)}Apri su ${esc(hostOf(g.url))}</a>` : ""}
     <button class="save ${ok ? "in" : "ghost"}" id="gBuy">${ok ? "L'ho comprato" : "L'ho comprato lo stesso"}</button>
     <div id="buyBox"></div>
@@ -1052,6 +1064,13 @@ function goalSheet(id) {
   `, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     $("#gEdit").onclick = () => goalEditSheet(g);
+    if ($("#priceBox")) {
+      loadPriceHistory(g.id).then(h => { if ($("#priceBox")) $("#priceBox").innerHTML = priceBox(S.goals[g.id] || g, h); });
+      $("#priceBox").addEventListener("click", e => {
+        if (e.target.closest("[data-pcheck]")) checkPrice(g.id);
+        if (e.target.closest("[data-puse]")) { const cur = S.goals[g.id]; putGoal({ ...cur, price: cur.last_price }); close(); toast(`Prezzo dell'obiettivo aggiornato a ${money(cur.last_price)}`); }
+      });
+    }
     $("#gBuy").onclick = () => {
       $("#gBuy").hidden = true;
       $("#buyBox").innerHTML = `<div class="confirm" style="background:var(--green-soft)">
@@ -1070,7 +1089,7 @@ function goalSheet(id) {
     $("#gDel").onclick = () => {
       $("#gDel").hidden = true;
       $("#delBox").innerHTML = `<div class="confirm"><p>Eliminare "${esc(g.name)}"? I movimenti non cambiano.</p>
-        <div class="btnrow"><button class="save ghost" id="delNo">Annulla</button><button class="save" style="background:var(--red)" id="delYes">Elimina</button></div></div>`;
+        <div class="btnrow"><button class="save ghost" id="delNo">Annulla</button><button class="save" style="background:var(--neg);color:#fff" id="delYes">Elimina</button></div></div>`;
       $("#delNo").onclick = () => { $("#delBox").innerHTML = ""; $("#gDel").hidden = false; };
       $("#delYes").onclick = () => { const c = { ...g }; close(); delGoal(g.id); toast("Obiettivo eliminato", () => putGoal(c)); };
     };
@@ -1445,6 +1464,66 @@ function transferSheet() {
       close(); commit(); toast(`Spostati ${money(amount)} da ${A.name} a ${B.name}`, () => { delTx(o.id); delTx(i.id); });
     };
   });
+}
+
+/* ============ prezzi dai link ============ */
+async function loadPriceHistory(goalId) {
+  if (!sb || !session) return [];
+  const { data, error } = await sb.from("price_history").select("price,checked_at").eq("goal_id", goalId).order("checked_at");
+  if (error) return null;
+  return data.map(r => ({ p: +r.price, t: new Date(r.checked_at).getTime() }));
+}
+function priceAdvice(h, g) {
+  if (!h || h.length < 3) return { text: "Sto raccogliendo i prezzi: dopo qualche giorno ti dico se conviene comprare ora o aspettare.", tone: "" };
+  const cur = h[h.length - 1].p, ps = h.map(x => x.p), min = Math.min(...ps), avg = ps.reduce((a, b) => a + b, 0) / ps.length;
+  const diff = Math.round((cur - avg) / avg * 100);
+  if (cur <= min) return { text: `È il prezzo più basso visto finora (media ${money(Math.round(avg))}): buon momento per comprare.`, tone: "good" };
+  if (diff <= -5) return { text: `È il ${-diff}% sotto la media degli ultimi controlli: buon momento per comprare.`, tone: "good" };
+  if (diff >= 5) return { text: `È il ${diff}% sopra la media (${money(Math.round(avg))}). Il più basso visto è ${money(min)}: se puoi, aspetta.`, tone: "wait" };
+  return { text: `Prezzo nella media degli ultimi controlli. Il più basso visto è ${money(min)}.`, tone: "" };
+}
+function priceSpark(h) {
+  if (!h || h.length < 2) return "";
+  const W = 300, H = 46, ps = h.map(x => x.p), min = Math.min(...ps), max = Math.max(...ps);
+  const x = k => k / (h.length - 1) * W, y = v => H - 4 - (v - min) / (max - min || 1) * (H - 8);
+  const d = h.map((q, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(q.p).toFixed(1)).join(" ");
+  return `<svg class="pspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--ink)" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
+    <div class="pspark-x"><span>${esc(fmtDate(h[0].t, { day: "numeric", month: "short" }))}</span><span>min ${money(min)} · max ${money(max)}</span></div>`;
+}
+function priceBox(g, h) {
+  if (legacyPrice) return `<div class="ptop"><b>Prezzo sul sito</b></div><p class="pnote">Per seguire il prezzo esegui su Supabase l'aggiornamento SQL dei prezzi (aggiornamento-5.sql).</p>`;
+  const when = g.last_checked ? fmtDate(g.last_checked, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  const adv = g.last_price ? priceAdvice(h, g) : null;
+  return `<div class="ptop"><b>Prezzo su ${esc(hostOf(g.url))}</b><button class="link" data-pcheck>${ic("sync", 15)}Controlla ora</button></div>
+    ${g.last_price ? `<div class="pnow"><span class="num">${money(g.last_price)}</span>${g.last_price !== g.price ? `<small class="${g.last_price < g.price ? "pos" : "neg"}">${g.last_price < g.price ? "−" : "+"}${money(Math.abs(g.last_price - g.price))} rispetto al tuo obiettivo</small>` : ""}</div>`
+      : `<p class="pnote">${esc(g.price_note || (g.last_checked ? "Prezzo non disponibile" : "Primo controllo in corso: torna tra qualche minuto."))}</p>`}
+    ${h === null ? "" : priceSpark(h)}
+    ${adv ? `<p class="padv ${adv.tone}">${esc(adv.text)}</p>` : ""}
+    ${g.last_price && g.last_price !== g.price ? `<button class="pill sm" data-puse>Usa ${esc(money(g.last_price))} come prezzo dell'obiettivo</button>` : ""}
+    ${when ? `<p class="pwhen">Controllato ${esc(when)} · si aggiorna ogni mattina</p>` : ""}`;
+}
+let checking = new Set();
+async function checkPrice(goalId, silent = false) {
+  if (!sb || !session || checking.has(goalId)) return;
+  checking.add(goalId);
+  const box = $("#priceBox"); if (box && !silent) box.classList.add("busy");
+  try {
+    const { error } = await sb.rpc("request_price_checks", { p_goal: goalId });
+    if (error) { if (/function|schema/i.test(error.message)) { legacyPrice = true; } else if (!silent) toast("Controllo del prezzo non riuscito: " + error.message); return; }
+    for (const wait of [5000, 6000, 8000]) {
+      await new Promise(r => setTimeout(r, wait));
+      await sb.rpc("process_price_checks");
+      const { data } = await sb.from("goals").select("last_price,last_checked,price_note").eq("id", goalId).single();
+      if (data?.last_checked && (!S.goals[goalId]?.last_checked || data.last_checked !== S.goals[goalId].last_checked)) {
+        S.goals[goalId] = { ...S.goals[goalId], ...data, last_price: data.last_price && +data.last_price }; save(); render();
+        break;
+      }
+    }
+  } finally {
+    checking.delete(goalId);
+    const b = $("#priceBox");
+    if (b) { b.classList.remove("busy"); const g = S.goals[goalId]; loadPriceHistory(goalId).then(h => { if ($("#priceBox") && g) $("#priceBox").innerHTML = priceBox(g, h); }); }
+  }
 }
 
 /* ============ events ============ */
