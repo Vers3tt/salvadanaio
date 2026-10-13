@@ -951,7 +951,8 @@ function goalEditSheet(existing) {
       <div class="field">${ic("link", 18)}<input id="gUrl" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="Link al prodotto (facoltativo)" value="${esc(existing?.url || "")}"></div>
       <div class="field"><label for="gDate">Entro il</label><input id="gDate" type="date" style="text-align:right" value="${esc(existing?.deadline || "")}"></div>
     </div>
-    <p class="hint">Con una data l'app ti dice quanto mettere da parte ogni mese.</p>
+    <p class="peek" id="gPeek"></p>
+    <p class="hint">Incolla il link del prodotto: leggo io prezzo, nome e foto. Con una data ti dico quanto mettere da parte ogni mese.</p>
     <div class="group-h"><span>Foto del prodotto</span></div>
     <div class="pick">
       <div class="gimg" id="gPrev"></div>
@@ -981,9 +982,44 @@ function goalEditSheet(existing) {
       catch { toast("Non riesco a leggere questa immagine"); }
     };
     nameIn.oninput = validate; priceIn.oninput = validate;
+    // reading price, name and photo from the product link as soon as it is pasted
+    let peekTimer = null, peekSeq = 0, typedPrice = !!existing;
+    priceIn.addEventListener("input", () => { typedPrice = true; });
+    const setPeek = (text, cls = "") => { const el = $("#gPeek"); if (el) { el.textContent = text; el.className = "peek " + cls; } };
+    const peek = async () => {
+      let u = $("#gUrl").value.trim();
+      if (!u) { setPeek(""); return; }
+      if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+      if (S.mode !== "cloud" || !sb || !session || u === existing?.url) return;
+      const seq = ++peekSeq;
+      setPeek("Leggo prezzo, nome e foto dal link…", "busy");
+      const { data: rid, error } = await sb.rpc("peek_price", { p_url: u });
+      if (seq !== peekSeq) return;
+      if (error || !rid) { setPeek(error && /function|schema/i.test(error.message) ? "" : "Non riesco a leggere questo link: scrivi il prezzo tu."); return; }
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        if (seq !== peekSeq || !$("#gPeek")) return;
+        const { data: r } = await sb.rpc("peek_price_result", { p_request: rid });
+        if (!r || r.status === "pending") continue;
+        if (r.status !== "ok") { setPeek("Questo sito non permette di leggere il prezzo: scrivilo tu. Lo riproverò ogni mattina.", "warn"); return; }
+        const got = [];
+        if (r.price) {
+          if (!typedPrice || !parseAmt(priceIn.value)) { priceIn.value = centsToInput(r.price); got.push("prezzo " + money(r.price)); }
+          else got.push("sul sito costa " + money(r.price));
+        }
+        const title = cleanTitle(r.title);
+        if (title && !nameIn.value.trim()) { nameIn.value = title.slice(0, 60); got.push("nome"); }
+        if (r.image && !img) { img = r.image; drawPrev(); got.push("foto"); }
+        validate();
+        setPeek(got.length ? `Letto dal link: ${got.join(", ")}. Controlla e salva.` : "Non trovo il prezzo in questa pagina: scrivilo tu.", got.length ? "ok" : "warn");
+        return;
+      }
+      setPeek("Il sito non risponde: scrivi il prezzo tu, lo controllerò più tardi.", "warn");
+    };
+    $("#gUrl").addEventListener("input", () => { clearTimeout(peekTimer); peekTimer = setTimeout(peek, 700); });
     $("#gUrl").addEventListener("paste", e => {
       const t = e.clipboardData?.getData("text") || "", m = t.match(/https?:\/\/\S+/);
-      if (m && m[0] !== t.trim()) { e.preventDefault(); $("#gUrl").value = m[0]; }
+      if (m && m[0] !== t.trim()) { e.preventDefault(); $("#gUrl").value = m[0]; clearTimeout(peekTimer); peekTimer = setTimeout(peek, 100); }
     });
     sh.querySelector("[data-x]").onclick = close;
     $("#gSearch").onclick = e => { if (!nameIn.value.trim()) { e.preventDefault(); toast("Scrivi prima il nome del prodotto"); nameIn.focus(); } };
@@ -1467,6 +1503,15 @@ function transferSheet() {
 }
 
 /* ============ prezzi dai link ============ */
+// product page titles: decode HTML entities and drop shop names ("Amazon.it: …", "… | IKEA")
+function cleanTitle(t) {
+  if (!t) return "";
+  const ta = document.createElement("textarea"); ta.innerHTML = t; t = ta.value.replace(/\s+/g, " ").trim();
+  t = t.replace(/^amazon\.[a-z.]+\s*:\s*/i, "").replace(/\s*:\s*amazon\.[a-z.]+.*$/i, "");
+  t = t.split(/\s+[|–—]\s+/)[0].trim();
+  t = t.replace(/\s+-\s+[^-]{2,25}$/, "").trim(); // "Nome prodotto - IKEA Italia"
+  return t;
+}
 async function loadPriceHistory(goalId) {
   if (!sb || !session) return [];
   const { data, error } = await sb.from("price_history").select("price,checked_at").eq("goal_id", goalId).order("checked_at");

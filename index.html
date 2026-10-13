@@ -495,6 +495,10 @@ button.crow{width:100%;text-align:left}
 .pspark{display:block;width:100%;height:46px}
 .pspark-x{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink3)}
 .gdate.deal{color:var(--green);font-weight:600}
+.peek{margin:8px 4px 0;font-size:13.5px;color:var(--ink2);min-height:0}
+.peek:empty{display:none}
+.peek.busy{color:var(--ink2)} .peek.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:50%;border:2px solid var(--ink3);border-top-color:var(--ink);animation:spin .8s linear infinite;vertical-align:-1px}
+.peek.ok{color:var(--green)} .peek.warn{color:var(--warn)}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}
