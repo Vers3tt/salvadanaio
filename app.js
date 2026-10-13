@@ -42,6 +42,9 @@ const P = {
   wrench: '<path d="M14.5 6.5a4 4 0 0 1 5.3-3.8l-2.6 2.6.4 2.3 2.3.4 2.6-2.6a4 4 0 0 1-5.3 5.2L8.5 19a2.1 2.1 0 0 1-3-3l8.3-8.7"/>',
   flag: '<path d="M5 21V3.5"/><path d="M5 4h12.5l-2.5 4.25L17.5 12.5H5"/>',
   arrowIn: '<path d="M17 7 7 17M7 8.5V17h8.5"/>',
+  transfer: '<path d="M4 8.5h15M15.5 5l3.5 3.5-3.5 3.5M20 15.5H5M8.5 12 5 15.5 8.5 19"/>',
+  wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><circle cx="16" cy="13.5" r="1.2"/>',
+  chevD: '<path d="m6 9.5 6 6 6-6"/>',
   arrowOut: '<path d="M7 17 17 7M8.5 7H17v8.5"/>',
   receipt: '<path d="M5.5 2.5v19l2.2-1.4 2.1 1.4 2.2-1.4 2.2 1.4 2.1-1.4 2.2 1.4v-19l-2.2 1.4-2.1-1.4-2.2 1.4-2.2-1.4-2.1 1.4z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
   sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
@@ -131,8 +134,11 @@ const CATS = {
   out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
   in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Altro","dots"]]
 };
+const TRANSFER = "Trasferimento";
+const isTransfer = t => t.cat === TRANSFER;
 function catInfo(type, name) {
   if (name === "Obiettivo") return ["Obiettivo", "flag"];
+  if (name === TRANSFER) return [TRANSFER, "transfer"];
   return CATS[type].find(c => c[0] === name) || [type === "in" ? "Entrata" : "Uscita", type === "in" ? "arrowIn" : "arrowOut"];
 }
 
@@ -155,7 +161,7 @@ let sb = null, session = null, authReady = false, syncing = false, flushing = fa
 
 /* ============ cloud sync (Supabase) ============ */
 const COLS = {
-  transactions: ["id","type","amount","cat","note","ts"],
+  transactions: ["id","type","amount","cat","note","ts","account"],
   goals: ["id","name","price","img","done","done_at","created_at","url","deadline"],
   recurring: ["id","type","amount","cat","note","freq","next_ts","active","created_at"]
 };
@@ -166,6 +172,12 @@ function warnSchema() {
   toast("Budget e ricorrenti restano su questo dispositivo finché non esegui l'aggiornamento SQL su Supabase");
 }
 const NEW_GOAL_COLS = ["url", "deadline"];
+let legacyTx = false; // true while the database still lacks transactions.account
+const missingAccCol = e => /account/.test(String(e?.message || "")) && /column|schema/i.test(String(e?.message || ""));
+function warnLegacyTx() {
+  if (legacyTx) return; legacyTx = true;
+  toast("I conti restano su questo dispositivo finché non esegui l'aggiornamento SQL su Supabase");
+}
 let legacyGoals = false; // true while the database still lacks the url/deadline columns
 const missingCol = e => /url|deadline/.test(String(e?.message || "")) && /column|schema/i.test(String(e?.message || ""));
 function warnLegacy() {
@@ -192,6 +204,9 @@ async function flush() {
         ? await sb.from(op.t).upsert(op.row, op.t === "settings" ? { onConflict: "user_id" } : undefined)
         : await sb.from(op.t).delete().eq("id", op.id);
       if (res.error && (op.t === "settings" || op.t === "recurring") && missingTable(res.error)) { warnSchema(); res = { error: null }; }
+      if (res.error && op.t === "transactions" && op.op === "up" && missingAccCol(res.error)) {
+        warnLegacyTx(); const row = { ...op.row }; delete row.account; res = await sb.from(op.t).upsert(row);
+      }
       if (res.error && op.t === "goals" && missingCol(res.error)) {
         warnLegacy();
         const row = { ...op.row }; NEW_GOAL_COLS.forEach(k => delete row[k]);
@@ -210,9 +225,11 @@ async function flush() {
 async function fetchAll(table) {
   const out = [], step = 1000;
   for (let from = 0; ; from += step) {
-    const cols = table === "goals" && legacyGoals ? COLS.goals.filter(c => !NEW_GOAL_COLS.includes(c)) : COLS[table];
+    const cols = table === "goals" && legacyGoals ? COLS.goals.filter(c => !NEW_GOAL_COLS.includes(c))
+      : table === "transactions" && legacyTx ? COLS.transactions.filter(c => c !== "account") : COLS[table];
     const { data, error } = await sb.from(table).select(cols.join(",")).range(from, from + step - 1);
     if (error && table === "goals" && !legacyGoals && missingCol(error)) { warnLegacy(); from -= step; continue; }
+    if (error && table === "transactions" && !legacyTx && missingAccCol(error)) { warnLegacyTx(); from -= step; continue; }
     if (error) throw error;
     out.push(...data);
     if (data.length < step) return out;
@@ -229,7 +246,7 @@ async function sync() {
       optional(fetchAll("recurring")),
       optional(sb.from("settings").select("data").limit(1).then(({ data, error }) => { if (error) throw error; return data; }))]);
     if (S.pending.length) return; // a change happened while downloading: next sync will catch up
-    S.tx = Object.fromEntries(tx.map(r => [r.id, { ...r, amount: +r.amount, ts: +r.ts }]));
+    S.tx = Object.fromEntries(tx.map(r => [r.id, { ...r, ...(legacyTx ? { account: S.tx[r.id]?.account || null } : {}), amount: +r.amount, ts: +r.ts }]));
     S.goals = Object.fromEntries(goals.map(r => {
       const local = S.goals[r.id] || {};
       const extra = legacyGoals ? { url: local.url || null, deadline: local.deadline || null } : {};
@@ -267,7 +284,7 @@ function derive() {
   const done = goals.filter(g => g.done).sort((a, b) => (b.done_at || 0) - (a.done_at || 0));
   const now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   let mIn = 0, mOut = 0;
-  for (const t of txs) { if (t.ts < m0) break; t.type === "in" ? mIn += t.amount : mOut += t.amount; }
+  for (const t of txs) { if (t.ts < m0) break; if (isTransfer(t)) continue; t.type === "in" ? mIn += t.amount : mOut += t.amount; }
   const since = Date.now() - 90 * DAY;
   const first = txs.length ? txs[txs.length - 1].ts : Date.now();
   const span = Math.max(30, Math.min(90, (Date.now() - first) / DAY));
@@ -348,6 +365,7 @@ function homeScreen() {
       <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
     <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
     ${balanceDelta()}
+    ${accountsBlock()}
     ${balanceChart()}
     <p class="next">${next ? `Mancano <b class="num">${money(next.price - D.total)}</b> per ${esc(next.name)}`
       : ready ? `${ready === 1 ? "Hai abbastanza per un obiettivo" : `Hai abbastanza per ${ready} obiettivi`}` : `Aggiungi un obiettivo per vedere quanto ti manca`}</p>
@@ -455,6 +473,7 @@ function monthStats() {
       in: 0, out: 0, cats: {} });
   }
   for (const t of D.txs) {
+    if (isTransfer(t)) continue;
     const m = out.find(m => t.ts >= m.start && t.ts < m.end); if (!m) continue;
     if (t.type === "in") m.in += t.amount;
     else { m.out += t.amount; const c = catInfo("out", t.cat)[0]; m.cats[c] = (m.cats[c] || 0) + t.amount; }
@@ -514,12 +533,12 @@ function txRow(t) {
   const when = d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + ", " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
   return `<button class="row" data-tx="${esc(t.id)}">
     <span class="ico">${ic(icon, 20)}</span>
-    <span class="t"><b>${esc(t.note || name)}</b><small>${esc(t.note ? name + " · " + when : when)}</small></span>
+    <span class="t"><b>${esc(t.note || name)}</b><small>${t.account && accById(t.account) ? `<i class="adot" style="background:${accById(t.account).color}"></i>${esc(accById(t.account).name)} · ` : ""}${esc(t.note ? name + " · " + when : when)}</small></span>
     <span class="a num ${t.type}">${t.type === "in" ? "+" : "−"}${money(t.amount)}</span>
   </button>`;
 }
 
-let movQuery = "";
+let movQuery = "", movAcc = "";
 function movScreen() {
   return `
   <header class="nav"><div><h1>Movimenti</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></div></header>
@@ -528,13 +547,14 @@ function movScreen() {
   <div class="seg" role="group">
     ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
   </div>
+  ${accounts().length ? `<div class="accs mov-accs">${[["", "Tutti i conti", ""], ...accounts().map(a => [a.id, a.name, a.color])].map(([id, n, c]) => `<button class="achip" data-macc="${esc(id)}" aria-pressed="${movAcc === id}">${c ? `<i class="adot" style="background:${c}"></i>` : ""}${esc(n)}</button>`).join("")}</div>` : ""}
   <div id="movSum">${movSummary()}</div>
   </aside>
   <div id="movList">${movList()}</div></div>`;
 }
 function movFiltered() {
   const q = movQuery.trim().toLowerCase();
-  return D.txs.filter(t => (movFilter === "all" || t.type === movFilter)
+  return D.txs.filter(t => (movFilter === "all" || t.type === movFilter) && (!movAcc || t.account === movAcc)
     && (!q || (t.note || "").toLowerCase().includes(q) || catInfo(t.type, t.cat)[0].toLowerCase().includes(q)));
 }
 function movSummary() {
@@ -548,8 +568,7 @@ function movSummary() {
 }
 function movList() {
   const q = movQuery.trim().toLowerCase();
-  const list = D.txs.filter(t => (movFilter === "all" || t.type === movFilter)
-    && (!q || (t.note || "").toLowerCase().includes(q) || catInfo(t.type, t.cat)[0].toLowerCase().includes(q)));
+  const list = movFiltered();
   const groups = [];
   for (const t of list) {
     const d = new Date(t.ts), k = d.getFullYear() + "-" + d.getMonth();
@@ -608,6 +627,7 @@ function moreScreen() {
   <div class="list"><button class="cell btn" data-more="siri"><span>Siri, widget e Comandi Rapidi</span><span>${ic("chevR", 16)}</span></button></div>` : ""}
   <div class="group-h"><span>Pianificazione</span></div>
   <div class="list">
+    <button class="cell btn" data-more="accounts"><span>Conti</span><span>${accounts().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
   </div>
@@ -806,6 +826,7 @@ function sheet(html, mount) {
 /* ============ transaction sheet ============ */
 function txSheet(type, existing) {
   let t = type, str = existing ? centsToInput(existing.amount).replace(/,00$/, "") : "", cat = existing?.cat || "";
+  let acc = existing ? (existing.account || "") : lastAccount();
   const when = existing ? new Date(existing.ts) : new Date();
   const dateVal = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}-${String(when.getDate()).padStart(2, "0")}`;
   sheet(`
@@ -813,6 +834,7 @@ function txSheet(type, existing) {
     <div class="seg" role="group"><button data-t="out">Uscita</button><button data-t="in">Entrata</button></div>
     <div class="amount"><div class="v num" id="amtV"></div></div>
     <div class="cats" id="cats"></div>
+    <div class="accs" id="accs"></div>
     <div class="fields">
       <div class="field"><input id="txNote" placeholder="Nota (facoltativa)" maxlength="80" value="${esc(existing?.note || "")}"></div>
       <div class="field"><label for="txDate">Data</label><input id="txDate" type="date" value="${dateVal}" style="text-align:right"></div>
@@ -831,6 +853,8 @@ function txSheet(type, existing) {
       $("#amtV").innerHTML = `${t === "in" ? "+" : "−"}${esc(ip.replace(/\B(?=(\d{3})+(?!\d))/g, "."))}<span class="cents${str.includes(",") ? "" : " ghost"}">,${esc((d + "00").slice(0, 2))}</span><span class="cur">€</span>`;
       if (!CATS[t].some(c => c[0] === cat) && cat !== "Obiettivo") cat = "";
       $("#cats").innerHTML = CATS[t].map(([n, icon]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico">${ic(icon, 22)}</span>${esc(n)}</button>`).join("");
+      const accs = accounts();
+      $("#accs").innerHTML = accs.length ? `<span class="accs-l">Conto</span>` + accs.map(a => `<button class="achip" data-acc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
       const s = $("#txSave"); s.className = "save " + t; s.disabled = !parseAmt(str);
       s.textContent = existing ? "Salva modifiche" : t === "in" ? "Aggiungi entrata" : "Aggiungi uscita";
     };
@@ -847,6 +871,7 @@ function txSheet(type, existing) {
     sh.querySelector("[data-x]").onclick = close;
     sh.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { t = b.dataset.t; draw(); });
     $("#cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (b) { cat = cat === b.dataset.cat ? "" : b.dataset.cat; draw(); } };
+    $("#accs").onclick = e => { const b = e.target.closest("[data-acc]"); if (b) { acc = acc === b.dataset.acc ? "" : b.dataset.acc; draw(); } };
     $("#keypad").onclick = e => { const b = e.target.closest("[data-k]"); if (b) key(b.dataset.k); };
     sh.addEventListener("keydown", e => {
       if (e.target.tagName === "INPUT") { if (e.key === "Enter") { e.preventDefault(); $("#txSave").click(); } return; }
@@ -866,12 +891,13 @@ function txSheet(type, existing) {
         const [y, m, d] = dv.split("-").map(Number), base = new Date(ts);
         if (base.getFullYear() !== y || base.getMonth() !== m - 1 || base.getDate() !== d) ts = new Date(y, m - 1, d, 12).getTime();
       }
-      const rec = { id: existing?.id || uuid(), type: t, amount, cat, note: $("#txNote").value.trim(), ts };
+      const rec = { id: existing?.id || uuid(), type: t, amount, cat, note: $("#txNote").value.trim(), ts, account: acc || null };
+      if (acc) rememberAccount(acc);
       const before = existing ? { ...existing } : null;
       const freq = existing ? "" : $("#txRep").value;
       const spentBefore = t === "out" ? spentThisMonth(cat) : 0;
       close(); putTx(rec);
-      if (freq) putRec({ id: uuid(), type: t, amount, cat, note: rec.note, freq, next_ts: advance(ts, freq), active: true, created_at: Date.now() });
+      if (freq) putRec({ id: uuid(), type: t, amount, cat, note: rec.note, account: rec.account, freq, next_ts: advance(ts, freq), active: true, created_at: Date.now() });
       toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata${freq ? `, si ripete ${FREQ[freq].toLowerCase()}` : ""}`, () => before ? putTx(before) : delTx(rec.id));
       if (!existing) mascotReact(t === "in" ? "jump" : "squish");
       if (!existing && t === "out") setTimeout(() => budgetAlert(cat, spentBefore, spentBefore + amount), 1800);
@@ -1098,7 +1124,7 @@ async function runRecurring() {
       while (next <= now && guard++ < 60) {
         const id = await occurrenceId(r.id, next);
         if (!S.tx[id]) {
-          const t = { id, type: r.type, amount: r.amount, cat: r.cat, note: r.note, ts: next };
+          const t = { id, type: r.type, amount: r.amount, cat: r.cat, note: r.note, ts: next, account: r.account || null };
           S.tx[id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); added++;
         }
         next = advance(next, r.freq);
@@ -1292,9 +1318,144 @@ function siriSheet() {
   });
 }
 
+/* ============ conti ============ */
+const ACC_COLORS = ["#162448", "#2F6FE4", "#0E9F8E", "#18795C", "#E0A100", "#F07A1A", "#D64545", "#7B5CD6", "#7A8193"];
+const ACC_PRESETS = ["Conto corrente", "Hype", "Revolut", "Contanti", "PayPal", "Satispay", "Carta prepagata"];
+const accounts = () => S.settings.accounts || [];
+const accById = id => accounts().find(a => a.id === id);
+let showAccounts = false; try { showAccounts = localStorage.getItem(LS + ".showacc") === "1"; } catch {}
+function lastAccount() { try { const id = localStorage.getItem(LS + ".acc"); return accById(id) ? id : (accounts()[0]?.id || ""); } catch { return accounts()[0]?.id || ""; } }
+function rememberAccount(id) { try { localStorage.setItem(LS + ".acc", id); } catch {} }
+function accountBalances() {
+  const b = {}; let none = 0;
+  for (const t of Object.values(S.tx)) {
+    const v = t.type === "in" ? t.amount : -t.amount;
+    if (t.account && accById(t.account)) b[t.account] = (b[t.account] || 0) + v; else none += v;
+  }
+  return { b, none };
+}
+function accountsBlock() {
+  const accs = accounts();
+  if (!accs.length) return `<button class="acc-toggle" data-acc-manage>${ic("wallet", 16)}Dividi il saldo per conto: Hype, Revolut, contanti…</button>`;
+  const { b, none } = accountBalances();
+  return `<button class="acc-toggle" data-acc-toggle aria-expanded="${showAccounts}">${ic("wallet", 16)}${showAccounts ? "Nascondi i conti" : `Vedi per conto (${accs.length})`}<span class="chev${showAccounts ? " up" : ""}">${ic("chevD", 14)}</span></button>
+    ${showAccounts ? `<div class="acc-list">${accs.map(a => `<div class="acc-row"><i class="adot lg" style="background:${a.color}"></i><span>${esc(a.name)}</span><b class="num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</b></div>`).join("")}
+      ${none ? `<div class="acc-row muted"><i class="adot lg" style="background:var(--ink3)"></i><span>Senza conto</span><b class="num">${money(none)}</b></div>` : ""}
+      <div class="acc-acts"><button class="link" data-transfer>${ic("transfer", 15)}Sposta tra conti</button><button class="link" data-acc-manage>Gestisci</button></div></div>` : ""}`;
+}
+function accountsSheet() {
+  const accs = accounts(), { b, none } = accountBalances();
+  const unassigned = Object.values(S.tx).filter(t => !t.account || !accById(t.account)).length;
+  sheet(`<div class="sheet-h"><span></span><h3>Conti</h3><button class="r" data-x>Fine</button></div>
+    <p class="hint" style="margin:0 4px 12px">Dove tieni i soldi: conto in banca, Hype, Revolut, contanti… Ogni movimento può andare su un conto e vedi il totale di ognuno.</p>
+    ${accs.length ? `<div class="list">${accs.map(a => `<button class="row" data-aedit="${esc(a.id)}"><span class="ico" style="background:${a.color}22;color:${a.color}">${ic("wallet", 20)}</span>
+      <span class="t"><b>${esc(a.name)}</b><small>Tocca per modificare</small></span><span class="a num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</span></button>`).join("")}</div>` : ""}
+    <button class="save" id="aAdd" style="margin-top:12px">Aggiungi conto</button>
+    ${accs.length > 1 ? `<button class="save ghost" id="aMove">${"Sposta soldi tra conti"}</button>` : ""}
+    ${accs.length && unassigned ? `<div class="group-h"><span>Movimenti senza conto</span><span class="num">${unassigned} · ${money(none)}</span></div>
+      <div class="card qcode"><p>Hai ${unassigned === 1 ? "1 movimento" : unassigned + " movimenti"} segnati prima di creare i conti. Assegnali tutti insieme a:</p>
+      <div class="accs">${accs.map(a => `<button class="achip" data-aassign="${esc(a.id)}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("")}</div></div>` : ""}`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    $("#aAdd").onclick = () => accountEditSheet();
+    if ($("#aMove")) $("#aMove").onclick = () => transferSheet();
+    sh.addEventListener("click", e => {
+      const ed = e.target.closest("[data-aedit]"); if (ed) { accountEditSheet(accById(ed.dataset.aedit)); return; }
+      const as = e.target.closest("[data-aassign]");
+      if (as) {
+        const id = as.dataset.aassign, list = Object.values(S.tx).filter(t => !t.account || !accById(t.account));
+        list.forEach(t => { const u = { ...t, account: id }; S.tx[t.id] = u; enqueue({ op: "up", t: "transactions", row: pick(u, COLS.transactions) }); });
+        commit(); close(); toast(`${list.length === 1 ? "1 movimento assegnato" : list.length + " movimenti assegnati"} a ${accById(id).name}`);
+      }
+    });
+  });
+}
+function accountEditSheet(existing) {
+  let color = existing?.color || ACC_COLORS[accounts().length % ACC_COLORS.length];
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica conto" : "Nuovo conto"}</h3><button class="r" id="aSave">Salva</button></div>
+    ${existing ? "" : `<div class="accs" style="margin-bottom:10px">${ACC_PRESETS.filter(n => !accounts().some(a => a.name.toLowerCase() === n.toLowerCase())).map(n => `<button class="achip" data-preset="${esc(n)}">${esc(n)}</button>`).join("")}</div>`}
+    <div class="fields">
+      <div class="field"><input id="aName" placeholder="Nome del conto, es. Hype" maxlength="30" value="${esc(existing?.name || "")}"></div>
+      ${existing ? "" : `<div class="field"><label for="aStart">Ci sono adesso €</label><input id="aStart" inputmode="decimal" placeholder="0,00" style="text-align:right"></div>`}
+    </div>
+    ${existing ? "" : `<p class="hint">Se indichi quanto c'è adesso, lo segno come saldo iniziale del conto.</p>`}
+    <div class="group-h"><span>Colore</span></div>
+    <div class="colors" id="aColors"></div>
+    ${existing ? `<button class="save danger" id="aDel" style="margin-top:18px">Elimina conto</button><div id="aDelBox"></div>` : ""}`, (sh, close) => {
+    const drawColors = () => $("#aColors").innerHTML = ACC_COLORS.map(c => `<button class="cdot" data-color="${c}" aria-pressed="${c === color}" style="background:${c}" aria-label="Colore"></button>`).join("");
+    drawColors();
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => {
+      const c = e.target.closest("[data-color]"); if (c) { color = c.dataset.color; drawColors(); }
+      const p = e.target.closest("[data-preset]"); if (p) { $("#aName").value = p.dataset.preset; $("#aStart")?.focus(); }
+    });
+    $("#aSave").onclick = () => {
+      const name = $("#aName").value.trim();
+      if (!name) { toast("Scrivi il nome del conto"); $("#aName").focus(); return; }
+      const list = accounts().slice();
+      if (existing) list[list.findIndex(a => a.id === existing.id)] = { ...existing, name, color };
+      else list.push({ id: uuid(), name, color });
+      const added = existing ? null : list[list.length - 1];
+      const start = parseAmt($("#aStart")?.value);
+      close(); saveSettings({ accounts: list });
+      if (added) {
+        rememberAccount(added.id);
+        if (start) putTx({ id: uuid(), type: "in", amount: start, cat: "Altro", note: "Saldo iniziale " + name, ts: Date.now(), account: added.id });
+      }
+      toast(existing ? "Conto aggiornato" : `${name} aggiunto`);
+    };
+    if (existing) $("#aDel").onclick = () => {
+      $("#aDel").hidden = true;
+      const n = Object.values(S.tx).filter(t => t.account === existing.id).length;
+      $("#aDelBox").innerHTML = `<div class="confirm"><p>Eliminare "${esc(existing.name)}"? ${n ? `I suoi ${n} movimenti restano, ma senza conto.` : ""}</p>
+        <div class="btnrow"><button class="save ghost" id="aNo">Annulla</button><button class="save" style="background:var(--neg);color:#fff" id="aYes">Elimina</button></div></div>`;
+      $("#aNo").onclick = () => { $("#aDelBox").innerHTML = ""; $("#aDel").hidden = false; };
+      $("#aYes").onclick = () => {
+        Object.values(S.tx).filter(t => t.account === existing.id).forEach(t => { const u = { ...t, account: null }; S.tx[t.id] = u; enqueue({ op: "up", t: "transactions", row: pick(u, COLS.transactions) }); });
+        close(); saveSettings({ accounts: accounts().filter(a => a.id !== existing.id) }); toast("Conto eliminato");
+      };
+    };
+  });
+}
+function transferSheet() {
+  const accs = accounts();
+  if (accs.length < 2) { toast("Servono almeno due conti: aggiungili in Altro → Conti"); accountsSheet(); return; }
+  let from = lastAccount() || accs[0].id, to = accs.find(a => a.id !== from).id;
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Sposta tra conti</h3><button class="r" id="tGo">Sposta</button></div>
+    <p class="hint" style="margin:0 4px 12px">Per esempio una ricarica da conto corrente a Hype. Il saldo totale non cambia e non conta come entrata o uscita del mese.</p>
+    <div class="group-h"><span>Da</span></div><div class="accs" id="tFrom"></div>
+    <div class="group-h"><span>A</span></div><div class="accs" id="tTo"></div>
+    <div class="fields" style="margin-top:14px"><div class="field"><label for="tAmt">Importo €</label><input id="tAmt" inputmode="decimal" placeholder="0,00" style="text-align:right"></div></div>`, (sh, close) => {
+    const chips = (sel, attr) => accs.map(a => `<button class="achip" ${attr}="${esc(a.id)}" aria-pressed="${sel === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("");
+    const draw = () => { $("#tFrom").innerHTML = chips(from, "data-tf"); $("#tTo").innerHTML = chips(to, "data-tt"); };
+    draw();
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => {
+      const f = e.target.closest("[data-tf]"), t = e.target.closest("[data-tt]");
+      if (f) { from = f.dataset.tf; if (to === from) to = accs.find(a => a.id !== from).id; draw(); }
+      if (t) { to = t.dataset.tt; if (to === from) from = accs.find(a => a.id !== to).id; draw(); }
+    });
+    setTimeout(() => $("#tAmt").focus(), 250);
+    $("#tGo").onclick = () => {
+      const amount = parseAmt($("#tAmt").value);
+      if (!amount) { toast("Scrivi quanto vuoi spostare"); return; }
+      const ts = Date.now(), A = accById(from), B = accById(to);
+      const note = `${A.name} → ${B.name}`;
+      const o = { id: uuid(), type: "out", amount, cat: TRANSFER, note, ts, account: from }, i = { id: uuid(), type: "in", amount, cat: TRANSFER, note, ts, account: to };
+      [o, i].forEach(t => { S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); });
+      close(); commit(); toast(`Spostati ${money(amount)} da ${A.name} a ${B.name}`, () => { delTx(o.id); delTx(i.id); });
+    };
+  });
+}
+
 /* ============ events ============ */
 document.addEventListener("click", e => {
   const ob = e.target.closest("[data-ob]"); if (ob) { onboardingAction(ob.dataset.ob); return; }
+  if (!e.target.closest(".sheet")) {
+    if (e.target.closest("[data-acc-toggle]")) { showAccounts = !showAccounts; try { localStorage.setItem(LS + ".showacc", showAccounts ? "1" : ""); } catch {} render(); return; }
+    if (e.target.closest("[data-acc-manage]")) { accountsSheet(); return; }
+    if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
+    const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
+  }
   if (e.target.closest("[data-budgets]") && !e.target.closest(".sheet")) { budgetSheet(); return; }
   const mb0 = e.target.closest("[data-mascot]");
   if (mb0) { mascotReact("jump"); mascotSay(mb0); return; }
@@ -1320,6 +1481,7 @@ document.addEventListener("click", e => {
     else if (a === "password") passwordSheet(false);
     else if (a === "delete") deleteAccountSheet();
     else if (a === "siri") siriSheet();
+    else if (a === "accounts") accountsSheet();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });

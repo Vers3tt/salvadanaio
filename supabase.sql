@@ -174,3 +174,6 @@ end $$;
 
 grant execute on function public.quick_add(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.quick_balance(text) to anon, authenticated;
+
+-- ===== Aggiornamento 4 =====
+alter table public.transactions add column if not exists account text;
