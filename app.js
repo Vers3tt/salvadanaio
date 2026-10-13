@@ -109,25 +109,105 @@ function mascotReact(kind) {
   });
   setTimeout(go, 30);
 }
-function mascotLine() {
-  const next = D.active.find(g => g.price > D.total), ready = D.active.find(g => g.price <= D.total);
-  const m = new Date(), m0 = new Date(m.getFullYear(), m.getMonth(), 1).getTime();
-  const net = D.txs.filter(t => t.ts >= m0).reduce((a, t) => a + (t.type === "in" ? t.amount : -t.amount), 0);
-  const lines = [];
-  if (!D.txs.length) lines.push("Ciao! Segna i soldi che hai adesso con Entrata, io li tengo al sicuro.");
-  if (ready) lines.push(`Hai abbastanza per ${ready.name}. Lo prendi?`);
-  if (next) lines.push(`Mancano ${money(next.price - D.total)} per ${next.name}. Ce la facciamo!`);
-  if (D.txs.length && net > 0) lines.push(`Questo mese hai messo da parte ${money(net)}. Ottimo lavoro!`);
-  if (D.txs.length && net < 0) lines.push(`Questo mese sei sotto di ${money(-net)}. Occhio alle uscite.`);
-  if (!D.active.length && D.txs.length) lines.push("Dammi un obiettivo: cosa vuoi comprarti?");
-  return lines[Math.floor(Math.random() * lines.length)] || "Ogni moneta conta.";
+/* Keepo's messages: built from the user's real data, most useful first.
+   First tap shows the most relevant one; tapping again (mascot or bubble) moves to the next. */
+const TIPS = [
+  "Un caffè al bar ogni giorno sono circa 400 € all'anno.",
+  "Segnare le spese appena le fai è il modo migliore per non dimenticarle.",
+  "Tocca un obiettivo per vedere quando conviene comprarlo.",
+  "Con i budget per categoria ti avviso prima di sforare.",
+  "Puoi segnare una spesa anche con Siri: \"Uscita Salvadanaio\".",
+  "Le spese piccole sono quelle che si notano meno: tienile d'occhio."
+];
+function mascotLines() {
+  const L = [], add = (prio, text) => L.push({ prio, text });
+  const now = new Date(), today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const p0 = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(), pSame = p0 + (now - m0);
+  const real = D.txs.filter(t => !isTransfer(t));
+  const monthLabel = now.toLocaleDateString("it-IT", { month: "long" });
+  const prevLabel = new Date(p0).toLocaleDateString("it-IT", { month: "long" });
+
+  if (!D.txs.length) { add(100, "Ciao, sono Keepo! Tocca Entrata e segna i soldi che hai adesso: da lì partiamo."); return L; }
+
+  // budget
+  const budgets = S.settings.budgets || {};
+  for (const [cat, b] of Object.entries(budgets)) {
+    if (!b) continue;
+    const spent = real.filter(t => t.type === "out" && t.ts >= m0 && catInfo("out", t.cat)[0] === cat).reduce((a, t) => a + t.amount, 0);
+    if (spent > b) add(95, `Budget ${cat} superato di ${money(spent - b)}. Per il resto di ${monthLabel} andiamoci piano.`);
+    else if (spent >= b * .8) add(85, `Hai usato il ${Math.round(spent / b * 100)}% del budget ${cat}: restano ${money(b - spent)}.`);
+  }
+  // goals
+  const ready = D.active.filter(g => g.price <= D.total);
+  if (ready.length) add(80, ready.length === 1 ? `Hai abbastanza per ${ready[0].name}. Quando vuoi, è tuo.` : `Hai abbastanza per ${ready.length} obiettivi. Quale prendi per primo?`);
+  for (const g of D.active) {
+    if (g.last_price && g.last_price < g.price) add(90, `Buone notizie: ${g.name} ora costa ${money(g.last_price)}, ${money(g.price - g.last_price)} in meno.`);
+    if (g.deadline && g.price > D.total) { const plan = deadlinePlan(g); if (plan) add(60, `${g.name}: ${plan.charAt(0).toLowerCase() + plan.slice(1)}.`); }
+  }
+  const next = D.active.find(g => g.price > D.total);
+  if (next) {
+    const left = next.price - D.total, months = D.perMonth > 0 ? Math.ceil(left / D.perMonth) : 0;
+    add(70, `Mancano ${money(left)} per ${next.name}.` + (months && months <= 36 ? ` Al tuo ritmo ci arrivi ${months <= 1 ? "entro un mese" : `in circa ${months} mesi`}.` : ""));
+  }
+  if (!D.active.length) add(40, "Dammi un obiettivo: cosa vuoi comprarti? Tutto il saldo lo fa avanzare.");
+  // recurring coming soon
+  for (const r of Object.values(S.rec)) {
+    if (!r.active) continue;
+    const days = Math.round((new Date(r.next_ts).setHours(0, 0, 0, 0) - today0) / DAY);
+    if (days >= 0 && days <= 3) add(75, `${days === 0 ? "Oggi" : days === 1 ? "Domani" : `Tra ${days} giorni`} arriva ${r.note || catInfo(r.type, r.cat)[0]}: ${r.type === "in" ? "+" : "−"}${money(r.amount)}.`);
+  }
+  // accounts in the red
+  if (accounts().length) { const { b } = accountBalances(); for (const a of accounts()) if ((b[a.id] || 0) < 0) add(88, `${a.name} è in rosso di ${money(-(b[a.id]))}. Vuoi spostarci qualcosa da un altro conto?`); }
+  // today
+  const todayOut = real.filter(t => t.type === "out" && t.ts >= today0).reduce((a, t) => a + t.amount, 0);
+  if (todayOut) add(55, `Oggi hai speso ${money(todayOut)}.`);
+  else if (now.getHours() >= 19 && !real.some(t => t.ts >= today0)) add(30, "Oggi non hai segnato niente. Tutto tranquillo o c'è qualcosa da aggiungere?");
+  // month vs same days of last month
+  const outNow = real.filter(t => t.type === "out" && t.ts >= m0).reduce((a, t) => a + t.amount, 0);
+  const outPrev = real.filter(t => t.type === "out" && t.ts >= p0 && t.ts < pSame).reduce((a, t) => a + t.amount, 0);
+  if (outPrev > 0 && outNow > 0 && now.getDate() >= 5) {
+    const d = Math.round((outNow - outPrev) / outPrev * 100);
+    if (d <= -10) add(65, `Finora hai speso il ${-d}% in meno rispetto agli stessi giorni di ${prevLabel}. Continua così!`);
+    else if (d >= 10) add(65, `Finora hai speso il ${d}% in più rispetto agli stessi giorni di ${prevLabel}.`);
+  }
+  // biggest category and savings rate
+  const cats = {}; real.filter(t => t.type === "out" && t.ts >= m0).forEach(t => { const c = catInfo("out", t.cat)[0]; cats[c] = (cats[c] || 0) + t.amount; });
+  const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+  if (top && outNow) add(45, `La voce più grande di ${monthLabel} è ${top[0]}: ${money(top[1])}, il ${Math.round(top[1] / outNow * 100)}% delle uscite.`);
+  const inNow = real.filter(t => t.type === "in" && t.ts >= m0).reduce((a, t) => a + t.amount, 0);
+  if (inNow > 0) {
+    const rate = Math.round((inNow - outNow) / inNow * 100);
+    if (rate > 0) add(50, `Questo mese hai messo da parte il ${rate}% di quello che è entrato.`);
+    else if (rate < 0) add(58, `Questo mese le uscite superano le entrate di ${money(outNow - inNow)}.`);
+  }
+  add(10, TIPS[Math.floor(Math.random() * TIPS.length)]);
+  return L.sort((a, b) => b.prio - a.prio);
+}
+let mascotQueue = [], mascotPos = 0, bubbleTimer = null;
+function greeting() {
+  const h = new Date().getHours();
+  return h < 6 ? "È tardi! " : h < 13 ? "Buongiorno! " : h < 18 ? "Buon pomeriggio! " : "Buonasera! ";
 }
 function mascotSay(btn) {
-  document.querySelectorAll(".m-bubble").forEach(b => b.remove());
-  const b = document.createElement("div"); b.className = "m-bubble"; b.textContent = mascotLine();
   const host = btn.closest(".nav, .ob-hero, .side-brand"); if (!host) return;
+  const open = document.querySelector(".m-bubble:not(.out)");
+  if (open && open.parentElement === host) mascotPos++;              // tap again: next message
+  else { mascotQueue = mascotLines(); mascotPos = 0; }               // fresh look at the data
+  if (mascotPos >= mascotQueue.length) mascotPos = 0;
+  document.querySelectorAll(".m-bubble").forEach(b => b.remove());
+  const item = mascotQueue[mascotPos]; if (!item) return;
+  const text = (mascotPos === 0 && item.prio < 90 ? greeting() : "") + item.text;
+  const more = mascotQueue.length > 1;
+  const b = document.createElement("div");
+  b.className = "m-bubble"; b.setAttribute("role", "status");
+  b.innerHTML = `<span class="mb-text"></span>${more ? `<span class="mb-more">${mascotPos + 1} di ${mascotQueue.length} · tocca per il prossimo</span>` : ""}`;
+  b.querySelector(".mb-text").textContent = text;
+  b.addEventListener("click", ev => { ev.stopPropagation(); mascotReact("jump"); mascotSay(btn); });
   host.appendChild(b);
-  setTimeout(() => b.classList.add("out"), 3600); setTimeout(() => b.remove(), 4000);
+  clearTimeout(bubbleTimer);
+  const ms = Math.min(9000, 3500 + text.length * 45);
+  bubbleTimer = setTimeout(() => { b.classList.add("out"); setTimeout(() => b.remove(), 400); }, ms);
 }
 
 const CATS = {
@@ -309,7 +389,7 @@ function deadlinePlan(g) {
   if (left <= 0) return `Obiettivo entro il ${when}: ci sei già`;
   if (days < 0) return `La data che avevi scelto (${when}) è passata`;
   const months = Math.max(1, days / 30.44);
-  return `Per arrivarci entro il ${when} ti servono ${money(Math.ceil(left / months / 100) * 100)} al mese`;
+  return `Per arrivarci entro ${[1, 8, 11].includes(end.getDate()) ? "l'" : "il "}${when} ti servono ${money(Math.ceil(left / months / 100) * 100)} al mese`;
 }
 function eta(g) {
   const left = g.price - D.total;
