@@ -52,6 +52,8 @@ const P = {
   minus: '<path d="M5 12h14"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   paste: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h4"/>',
+  camera: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.3l1.4-2h5.6l1.4 2h2.3A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.4"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   photo: '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m21 15.5-4.5-4.5L7 20"/>',
   link: '<path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L11.8 5.8"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.4-1.4"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
@@ -676,6 +678,7 @@ function goalCard(g) {
     <b>${esc(g.name)}</b>
     <div class="prog"><i style="width:${pct}%"></i></div>
     <div class="gmeta"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><span class="num">${money(g.price)}</span></div>
+    ${workTime(g.price) ? `<div class="gdate">${ic("clock", 14)}<span>${esc(workTime(g.price, true))} di lavoro</span></div>` : ""}
     ${g.deadline ? `<div class="gdate">${ic("calendar", 14)}<span>entro ${esc(fmtDate(g.deadline + "T12:00", { day: "numeric", month: "short" }))}</span></div>` : ""}
     ${g.last_price && g.last_price < g.price ? `<div class="gdate deal">${ic("label", 14)}<span>ora a ${esc(money(g.last_price))}</span></div>` : ""}
   </button>`;
@@ -712,6 +715,7 @@ function moreScreen() {
   <div class="list"><button class="cell btn" data-more="siri"><span>Siri, widget e Comandi Rapidi</span><span>${ic("chevR", 16)}</span></button></div>` : ""}
   <div class="group-h"><span>Pianificazione</span></div>
   <div class="list">
+    <button class="cell btn" data-more="wage"><span>Quanto ti costa davvero</span><span>${S.settings.hourly ? esc(money(S.settings.hourly)) + "/ora" : "Imposta"}</span></button>
     <button class="cell btn" data-more="accounts"><span>Conti</span><span>${accounts().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
@@ -920,9 +924,10 @@ function txSheet(type, existing) {
   const when = existing ? new Date(existing.ts) : new Date();
   const dateVal = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, "0")}-${String(when.getDate()).padStart(2, "0")}`;
   sheet(`
-    <div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo movimento"}</h3><span></span></div>
+    <div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo movimento"}</h3>${existing ? "<span></span>" : `<button class="r scanbtn" id="txScan">${ic("camera", 18)}Scontrino</button>`}</div>
+    <p class="peek" id="scanMsg"></p>
     <div class="seg" role="group"><button data-t="out">Uscita</button><button data-t="in">Entrata</button></div>
-    <div class="amount"><div class="v num" id="amtV"></div></div>
+    <div class="amount"><div class="v num" id="amtV"></div><div class="worktime" id="wt"></div></div>
     <div class="cats" id="cats"></div>
     <div class="accs" id="accs"></div>
     <div class="fields">
@@ -945,6 +950,7 @@ function txSheet(type, existing) {
       $("#cats").innerHTML = CATS[t].map(([n, icon]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico">${ic(icon, 22)}</span>${esc(n)}</button>`).join("");
       const accs = accounts();
       $("#accs").innerHTML = accs.length ? `<span class="accs-l">Conto</span>` + accs.map(a => `<button class="achip" data-acc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
+      const wt = workTime(parseAmt(str)); $("#wt").innerHTML = wt && t === "out" ? `${ic("clock", 14)}≈ ${esc(wt)} di lavoro` : "";
       const s = $("#txSave"); s.className = "save " + t; s.disabled = !parseAmt(str);
       s.textContent = existing ? "Salva modifiche" : t === "in" ? "Aggiungi entrata" : "Aggiungi uscita";
     };
@@ -963,6 +969,30 @@ function txSheet(type, existing) {
     $("#cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (b) { cat = cat === b.dataset.cat ? "" : b.dataset.cat; draw(); } };
     $("#accs").onclick = e => { const b = e.target.closest("[data-acc]"); if (b) { acc = acc === b.dataset.acc ? "" : b.dataset.acc; draw(); } };
     $("#keypad").onclick = e => { const b = e.target.closest("[data-k]"); if (b) key(b.dataset.k); };
+    if ($("#txScan")) $("#txScan").onclick = () => {
+      const f = $("#fileIn"); f.value = ""; f.setAttribute("capture", "environment");
+      f.onchange = async () => {
+        f.removeAttribute("capture");
+        const file = f.files[0]; if (!file) return;
+        const msg = (text, cls = "") => { const el = $("#scanMsg"); if (el) { el.textContent = text; el.className = "peek " + cls; } };
+        msg("Leggo lo scontrino sul telefono…", "busy");
+        try {
+          const r = await readReceipt(file, pct => msg(`Leggo lo scontrino… ${pct}%`, "busy"));
+          if (!$("#amtV")) return;
+          const got = [];
+          if (r.total) { str = centsToInput(r.total).replace(/,00$/, ""); got.push("totale " + money(r.total)); }
+          if (r.shop && !$("#txNote").value.trim()) { $("#txNote").value = r.shop; got.push("negozio"); }
+          if (r.date) { $("#txDate").value = r.date; got.push("data"); }
+          if (r.cat && !cat) { t = "out"; cat = r.cat; got.push("categoria " + r.cat); }
+          t = "out"; draw();
+          msg(got.length ? `Letto: ${got.join(", ")}. Controlla e salva.` : "Non riesco a leggere il totale: prova con una foto più dritta e illuminata, o scrivilo tu.", got.length ? "ok" : "warn");
+        } catch (err) {
+          console.warn(err);
+          msg("Non sono riuscito a leggere lo scontrino. Controlla la connessione la prima volta (scarico il lettore) e riprova.", "warn");
+        }
+      };
+      f.click();
+    };
     sh.addEventListener("keydown", e => {
       if (e.target.tagName === "INPUT") { if (e.key === "Enter") { e.preventDefault(); $("#txSave").click(); } return; }
       if (/^[0-9]$/.test(e.key)) key(e.key);
@@ -1169,6 +1199,7 @@ function goalSheet(id) {
         <div><span>Mancano</span><b class="num${left ? "" : " pos"}">${left ? money(left) : "0 €"}</b></div>
       </div>
       <p class="eta">${esc(eta(g))}</p>
+      ${workTime(g.price) ? `<div class="plan">${ic("clock", 18)}<span>Ti costa circa <b>${esc(workTime(g.price))}</b> di lavoro.</span></div>` : ""}
       ${g.deadline && !ok ? `<div class="plan">${ic("calendar", 18)}<span>${esc(deadlinePlan(g))}</span></div>` : ""}
     </div>
     ${g.url && S.mode === "cloud" ? `<div class="pricebox" id="priceBox">${priceBox(g, null)}</div>` : ""}
@@ -1651,6 +1682,105 @@ async function checkPrice(goalId, silent = false) {
   }
 }
 
+/* ============ quanto ti costa davvero ============ */
+// amount in cents -> working time, from the hourly net pay set in Altro
+function workTime(cents, short = false) {
+  const h = S.settings.hourly; if (!h || !cents) return "";
+  const mins = Math.round(cents / h * 60);
+  if (mins < 1) return short ? "< 1 min" : "meno di un minuto";
+  if (mins < 60) return `${mins} min`;
+  if (mins < 8 * 60) { const hh = Math.floor(mins / 60), mm = mins % 60; return mm && !short ? `${hh} h ${mm} min` : `${hh}${mm && short ? "," + Math.round(mm / 6) : ""} h`; }
+  const days = mins / (8 * 60);
+  return days < 10 ? `${days.toFixed(1).replace(".", ",").replace(",0", "")} giorni` : `${Math.round(days)} giorni`;
+}
+function wageSheet() {
+  const st = S.settings, mode = st.wageMode || "month";
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Quanto ti costa davvero</h3><button class="r" id="wSave">Salva</button></div>
+    <p class="hint" style="margin:0 4px 12px">Ogni obiettivo e ogni spesa ti mostrano anche quante ore di lavoro costano. Il dato resta tuo: serve solo per il calcolo.</p>
+    <div class="seg" role="group"><button data-wm="month" aria-pressed="${mode === "month"}">Stipendio mensile</button><button data-wm="hour" aria-pressed="${mode === "hour"}">Paga oraria</button></div>
+    <div class="fields" id="wFields"></div>
+    <p class="hint" id="wPrev"></p>
+    ${st.hourly ? `<button class="save danger" id="wOff">Non mostrare più il tempo di lavoro</button>` : ""}`, (sh, close) => {
+    let m = mode;
+    const draw = () => {
+      sh.querySelectorAll("[data-wm]").forEach(b => b.setAttribute("aria-pressed", b.dataset.wm === m));
+      $("#wFields").innerHTML = m === "month"
+        ? `<div class="field"><label for="wMonth">Netto al mese €</label><input id="wMonth" inputmode="decimal" placeholder="1.500" style="text-align:right" value="${st.monthly ? esc(centsToInput(st.monthly).replace(/,00$/, "")) : ""}"></div>
+           <div class="field"><label for="wHours">Ore a settimana</label><input id="wHours" inputmode="decimal" placeholder="40" style="text-align:right" value="${esc(st.weekHours || "")}"></div>`
+        : `<div class="field"><label for="wHour">Netto all'ora €</label><input id="wHour" inputmode="decimal" placeholder="10,00" style="text-align:right" value="${st.hourly && st.wageMode === "hour" ? esc(centsToInput(st.hourly)) : ""}"></div>`;
+      sh.querySelectorAll("#wFields input").forEach(i => i.oninput = preview); preview();
+    };
+    const calc = () => {
+      if (m === "hour") return parseAmt($("#wHour").value);
+      const monthly = parseAmt($("#wMonth").value), hours = parseFloat(String($("#wHours").value).replace(",", ".")) || 40;
+      return monthly ? Math.round(monthly / (hours * 52 / 12)) : 0;
+    };
+    const preview = () => { const h = calc(); $("#wPrev").textContent = h ? `Circa ${money(h)} netti all'ora. Un caffè da 1,20 € ≈ ${Math.max(1, Math.round(120 / h * 60))} minuti di lavoro.` : ""; };
+    sh.querySelector("[data-x]").onclick = close;
+    sh.querySelectorAll("[data-wm]").forEach(b => b.onclick = () => { m = b.dataset.wm; draw(); });
+    $("#wSave").onclick = () => {
+      const h = calc(); if (!h) { toast("Scrivi quanto guadagni"); return; }
+      const patch = { hourly: h, wageMode: m };
+      if (m === "month") { patch.monthly = parseAmt($("#wMonth").value); patch.weekHours = $("#wHours").value.trim() || "40"; }
+      close(); saveSettings(patch); toast(`Fatto: ${money(h)} all'ora`);
+    };
+    if ($("#wOff")) $("#wOff").onclick = () => { close(); saveSettings({ hourly: null }); toast("Tempo di lavoro nascosto"); };
+    draw();
+  });
+}
+
+/* ============ scontrino ============ */
+// OCR runs in the browser with Tesseract.js: the photo never leaves the device.
+let ocrWorker = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+}
+async function prepReceipt(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+    const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.35)"; x.drawImage(im, 0, 0, c.width, c.height);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+const SHOP_CATS = [
+  [/conad|coop|esselunga|lidl|carrefour|eurospin|despar|pam|penny|aldi|md\b|famila|sigma|crai|todis|tigre|iper|supermercat|market/i, "Spesa"],
+  [/bar\b|caff[eè]|pizzer|ristorant|trattori|osteri|sushi|mcdonald|burger|kebab|gelater|pasticceri|panific|bistrot/i, "Ristoranti"],
+  [/farmaci|parafarm|sanitari/i, "Salute"],
+  [/\beni\b|\bq8\b|\bip\b|tamoil|esso|agip|carburant|benzin|parcheggi|autostrad|trenitalia|italo|atm\b|atac/i, "Trasporti"],
+  [/zara|h&m|primark|ovs|decathlon|ikea|mediaworld|unieuro|euronics|amazon|zalando|shein|douglas|sephora|tiger/i, "Shopping"],
+  [/cinema|teatro|museo|steam|playstation|netflix|spotify/i, "Svago"]
+];
+async function readReceipt(file, onProgress) {
+  await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  if (!ocrWorker) ocrWorker = await Tesseract.createWorker("ita", 1, { logger: m => { if (m.status === "recognizing text") onProgress(Math.round(m.progress * 100)); } });
+  const { data } = await ocrWorker.recognize(await prepReceipt(file));
+  return parseReceipt(data.text || "");
+}
+function parseReceipt(text) {
+  const lines = text.split(/\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const amountIn = l => { const m = l.replace(/(\d)\s*([.,])\s*(\d{2})\b/g, "$1$2$3").match(/(\d{1,5}(?:[.\s]\d{3})*[.,]\d{2})(?!\d)/g); return m ? m.map(v => parseAmt(v.replace(/\s/g, "").replace(/\.(?=\d{3}[.,])/g, ""))) : []; };
+  let total = 0;
+  for (const re of [/totale\s*(complessivo|euro|eur|€)?/i, /importo\s*(pagato|totale)?/i, /\btot\b/i, /pagamento|contante|bancomat|carta/i]) {
+    for (let i = 0; i < lines.length && !total; i++) {
+      if (!re.test(lines[i]) || /subtot|iva|resto|sconto/i.test(lines[i])) continue;
+      const nextOk = lines[i + 1] && !/resto|iva|sconto|subtot/i.test(lines[i + 1]);
+      const v = amountIn(lines[i]).concat(nextOk ? amountIn(lines[i + 1]) : []);
+      if (v.length) total = v[0];
+    }
+    if (total) break;
+  }
+  if (!total) { const all = lines.filter(l => !/resto|contante|pagamento/i.test(l)).flatMap(amountIn).filter(v => v < 500000); if (all.length) total = Math.max(...all); }
+  const shop = (lines.slice(0, 5).find(l => /[a-zà-ù]{3,}/i.test(l) && !/scontrino|documento|commerciale|via |p\.?\s?iva|tel/i.test(l)) || "").replace(/[^\p{L}\p{N}&' .-]/gu, "").trim().slice(0, 40);
+  const dm = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\b/);
+  let date = "";
+  if (dm) { let [, d, mo, y] = dm.map(Number); if (y < 100) y += 2000; if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2015) date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+  const cat = (SHOP_CATS.find(([re]) => re.test(text)) || [])[1] || "";
+  return { total, shop: shop ? shop.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) : "", date, cat };
+}
+
 /* ============ events ============ */
 document.addEventListener("click", e => {
   const ob = e.target.closest("[data-ob]"); if (ob) { onboardingAction(ob.dataset.ob); return; }
@@ -1686,6 +1816,7 @@ document.addEventListener("click", e => {
     else if (a === "delete") deleteAccountSheet();
     else if (a === "siri") siriSheet();
     else if (a === "accounts") accountsSheet();
+    else if (a === "wage") wageSheet();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });

@@ -504,6 +504,9 @@ button.crow{width:100%;text-align:left}
 .peek:empty{display:none}
 .peek.busy{color:var(--ink2)} .peek.busy::before{content:"";display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:50%;border:2px solid var(--ink3);border-top-color:var(--ink);animation:spin .8s linear infinite;vertical-align:-1px}
 .peek.ok{color:var(--green)} .peek.warn{color:var(--warn)}
+.scanbtn{display:flex;align-items:center;gap:6px;font-size:15px!important}
+.worktime{display:flex;justify-content:center;align-items:center;gap:5px;margin-top:6px;font-size:13.5px;color:var(--ink2);min-height:18px}
+.sheet #scanMsg{margin:0 4px 8px;text-align:center}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}
