@@ -108,9 +108,10 @@ def workflow(actions, glyph, color):
         "WFWorkflowActions": actions}
 
 # colori del Comando Rapido: blu scuro, verde, blu
-SPECS = [("Uscita Keepo", movement("out"), 59511, 463140863),
-         ("Entrata Keepo", movement("in"), 59511, 431817727),
-         ("Saldo Keepo", balance(), 59446, 4282601983)]
+BRAND = os.environ.get("SD_BRAND", "Keepo")
+SPECS = [(f"Uscita {BRAND}", movement("out"), 59511, 463140863),
+         (f"Entrata {BRAND}", movement("in"), 59511, 431817727),
+         (f"Saldo {BRAND}", balance(), 59446, 4282601983)]
 out = os.environ.get("SD_OUT") or os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
 for name, actions, glyph, color in SPECS:
     with tempfile.NamedTemporaryFile(suffix=".shortcut", delete=False) as f:
