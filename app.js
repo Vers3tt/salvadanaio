@@ -1789,7 +1789,8 @@ function parseReceipt(text) {
 
 /* ============ pagamenti divisi tra conti ============ */
 // rows of [account, amount]; "+ altro conto" adds a row with what is still missing
-function paymentRows(el, initial, { label = "Importo", total = 0 } = {}) {
+function paymentRows(el, initial, { label = "Importo", total = 0, restNoAccount = false } = {}) {
+  const gap = sum => !total || sum === total ? "" : sum < total ? (restNoAccount ? ` · il resto (${money(total - sum)}) senza conto` : ` · mancano ${money(total - sum)}`) : ` · ${money(sum - total)} in più`;
   let rows = initial.map(r => ({ ...r }));
   const accs = accounts();
   const draw = () => {
@@ -1799,10 +1800,10 @@ function paymentRows(el, initial, { label = "Importo", total = 0 } = {}) {
         <input data-pamt="${i}" inputmode="decimal" value="${r.amount ? esc(centsToInput(r.amount)) : ""}" placeholder="0,00" aria-label="Importo">
         ${rows.length > 1 ? `<button class="payx" data-pdel="${i}" aria-label="Togli">${ic("close", 16)}</button>` : ""}
       </div>`).join("")
-      + (accs.length ? `<div class="payfoot"><button class="link" data-padd>${ic("plus", 15)}Paga anche con un altro conto</button><span class="num">${rows.length > 1 ? "Totale " + money(sum) : ""}${total && sum !== total ? ` · ${sum < total ? "mancano" : "in più"} ${money(Math.abs(total - sum))}` : ""}</span></div>` : "");
+      + (accs.length ? `<div class="payfoot"><button class="link" data-padd>${ic("plus", 15)}Paga anche con un altro conto</button><span class="num">${rows.length > 1 ? "Totale " + money(sum) : ""}${gap(sum)}</span></div>` : "");
   };
   el.addEventListener("input", e => {
-    const a = e.target.closest("[data-pamt]"); if (a) { rows[+a.dataset.pamt].amount = parseAmt(a.value); const f = el.querySelector(".payfoot span"); if (f) { const sum = rows.reduce((x, r) => x + (r.amount || 0), 0); f.textContent = (rows.length > 1 ? "Totale " + money(sum) : "") + (total && sum !== total ? ` · ${sum < total ? "mancano" : "in più"} ${money(Math.abs(total - sum))}` : ""); } }
+    const a = e.target.closest("[data-pamt]"); if (a) { rows[+a.dataset.pamt].amount = parseAmt(a.value); const f = el.querySelector(".payfoot span"); if (f) { const sum = rows.reduce((x, r) => x + (r.amount || 0), 0); f.textContent = (rows.length > 1 ? "Totale " + money(sum) : "") + gap(sum); } }
   });
   el.addEventListener("change", e => { const s = e.target.closest("[data-pacc]"); if (s) rows[+s.dataset.pacc].acc = s.value; });
   el.addEventListener("click", e => {
@@ -1822,13 +1823,14 @@ function splitSheet(tx) {
   sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Dividi tra conti</h3><button class="r" id="spGo">Salva</button></div>
     <p class="hint" style="margin:0 4px 12px">${esc(tx.note || catInfo(tx.type, tx.cat)[0])} · ${money(tx.amount)}. Scegli quanto è uscito da ogni conto, per esempio una parte dal buono e il resto da Hype.</p>
     <div class="card qcode" id="spRows"></div>`, (sh, close) => {
-    const pay = paymentRows($("#spRows"), [{ acc: tx.account || lastAccount(), amount: tx.amount }], { total: tx.amount });
+    const pay = paymentRows($("#spRows"), [{ acc: tx.account || lastAccount(), amount: tx.amount }], { total: tx.amount, restNoAccount: true });
     sh.querySelector("[data-x]").onclick = close;
     $("#spGo").onclick = () => {
       const rows = pay.rows().filter(r => r.amount > 0);
       const sum = rows.reduce((a, r) => a + r.amount, 0);
       if (!rows.length) { toast("Scrivi almeno un importo"); return; }
-      if (sum !== tx.amount) { toast(`La somma è ${money(sum)}: deve fare ${money(tx.amount)}`); return; }
+      if (sum > tx.amount) { toast(`La somma è ${money(sum)}: supera il movimento di ${money(sum - tx.amount)}`); return; }
+      if (sum < tx.amount) rows.push({ acc: "", amount: tx.amount - sum }); // the rest stays without account
       const before = { ...tx }, created = [];
       rows.forEach((r, i) => {
         const t = i === 0 ? { ...tx, amount: r.amount, account: r.acc || null } : { ...tx, id: uuid(), amount: r.amount, account: r.acc || null };
