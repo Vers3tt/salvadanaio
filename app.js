@@ -927,7 +927,7 @@ function txSheet(type, existing) {
     <div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo movimento"}</h3>${existing ? "<span></span>" : `<button class="r scanbtn" id="txScan">${ic("camera", 18)}Scontrino</button>`}</div>
     <p class="peek" id="scanMsg"></p>
     <div class="seg" role="group"><button data-t="out">Uscita</button><button data-t="in">Entrata</button></div>
-    <div class="amount"><div class="v num" id="amtV"></div><div class="worktime" id="wt"></div></div>
+    <div class="amount"><div class="v num" id="amtV"></div><div class="worktime" id="wt"></div><div class="kbhint">Scrivi l'importo con la tastiera · Invio per salvare</div></div>
     <div class="cats" id="cats"></div>
     <div class="accs" id="accs"></div>
     <div class="fields">
