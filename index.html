@@ -537,6 +537,15 @@ button.crow{width:100%;text-align:left}
 .badge{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7A4E00;background:linear-gradient(135deg,#F9D77E,#E9B949);border-radius:6px;padding:2px 6px}
 .soonrow .pill{flex:none;margin-top:2px;white-space:nowrap}
 .pill.on{background:var(--ink);color:var(--on-ink)}
+.notice{display:flex;gap:12px;padding:14px;margin-bottom:12px;align-items:flex-start}
+.notice img{border-radius:10px;flex:none;box-shadow:0 0 0 1px var(--line)}
+.notice>div{display:grid;gap:4px;min-width:0;font-size:14px}
+.notice b{font-size:15px}
+.notice span{color:var(--ink2)}
+.notice ol{margin:6px 0 2px;padding-left:18px;display:grid;gap:4px;color:var(--ink)}
+.notice-acts{display:flex;gap:16px;margin-top:4px}
+.notice-acts .link{font-size:14px;color:var(--ink);font-weight:600}
+.notice-acts .link.muted{color:var(--ink2);font-weight:500}
 @keyframes slideIn{from{opacity:0;transform:translate(-18%,10%) scale(.9)}to{opacity:1;transform:none}}
 @keyframes drop{0%{opacity:0;transform:translateY(-38%) scale(.86)}55%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes blink{50%{transform:scaleY(.15)}}

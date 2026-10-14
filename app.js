@@ -445,6 +445,7 @@ function homeScreen() {
   return `
   <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Keepo</h1></div>${mascot()}</header>
   <div id="syncBadge"></div>
+  ${iconNotice()}
   <div class="home-grid"><div class="col-a">
   <section class="card balance">
     <div class="bal-top"><span class="lbl">Saldo</span>
@@ -1442,6 +1443,31 @@ function deleteAccountSheet() {
   });
 }
 
+/* ============ nuova icona ============ */
+// iOS keeps the name and icon saved when the app was added to the Home screen: tell old installs how to refresh them
+const ICON_VERSION = 2;
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+(function initIconVersion() {
+  if (!isStandalone()) return;
+  try {
+    if (localStorage.getItem(LS + ".iconv") === null)
+      localStorage.setItem(LS + ".iconv", Object.keys(S.tx).length ? "1" : String(ICON_VERSION)); // existing data = installed before the change
+  } catch {}
+})();
+let iconSteps = false;
+function iconNotice() {
+  let v = ICON_VERSION; try { v = +(localStorage.getItem(LS + ".iconv") || ICON_VERSION); } catch {}
+  if (!isStandalone() || v >= ICON_VERSION) return "";
+  const cloud = S.mode === "cloud";
+  return `<div class="card notice"><img src="icons/icon-192.png" alt="" width="44" height="44">
+    <div><b>Nuovo nome e nuova icona</b><span>Sulla schermata Home vedi ancora quelli vecchi: iOS non li aggiorna da solo.</span>
+    ${iconSteps ? `<ol><li>${cloud ? "I tuoi dati sono salvati nel tuo account: non perdi niente." : "<b>Prima</b> vai in Altro → Esporta backup: i dati sono solo su questo telefono."}</li>
+      <li>Tieni premuta l'icona sulla schermata Home → <b>Elimina app</b>.</li>
+      <li>Apri <b>vers3tt.github.io/salvadanaio</b> in Safari → Condividi → <b>Aggiungi alla schermata Home</b>.</li>
+      ${cloud ? "<li>Apri Keepo e accedi con la tua email.</li>" : "<li>Apri Keepo e usa Altro → Importa backup.</li>"}</ol>` : ""}
+    <div class="notice-acts">${iconSteps ? "" : `<button class="link" data-icon-steps>Come si fa</button>`}<button class="link muted" data-icon-ok>Ho capito</button></div></div></div>`;
+}
+
 /* ============ prossimamente ============ */
 const ROADMAP = [
   { id: "bank", icon: "wallet", premium: true, title: "Conti collegati in automatico", text: "Hype, Revolut e le banche italiane sincronizzate da sole tramite open banking: movimenti e saldi senza scrivere niente." },
@@ -1914,6 +1940,8 @@ document.addEventListener("click", e => {
     if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
     const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
   }
+  if (e.target.closest("[data-icon-steps]")) { iconSteps = true; render(); return; }
+  if (e.target.closest("[data-icon-ok]")) { try { localStorage.setItem(LS + ".iconv", String(ICON_VERSION)); } catch {} render(); return; }
   const it = e.target.closest("[data-interest]");
   if (it) {
     const list = new Set(S.settings.interest || []), id = it.dataset.interest;
