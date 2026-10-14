@@ -720,6 +720,11 @@ function moreScreen() {
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
   </div>
+  <div class="group-h"><span>Prossimamente</span></div>
+  <div class="list soon">${ROADMAP.map(r => `<div class="cell soonrow"><span class="ico">${ic(r.icon, 20)}</span>
+    <span class="soont"><b>${esc(r.title)}${r.premium ? ` <i class="badge">Premium</i>` : ""}</b><small>${esc(r.text)}</small></span>
+    <button class="pill sm${(S.settings.interest || []).includes(r.id) ? " on" : ""}" data-interest="${r.id}">${(S.settings.interest || []).includes(r.id) ? "Ti avviso" : "Mi interessa"}</button></div>`).join("")}</div>
+  <p class="foot">Le funzioni Premium faranno parte di un abbonamento opzionale: quello che usi oggi resta gratis.</p>
   <div class="group-h"><span>Backup</span></div>
   <div class="list">
     <button class="cell btn" data-more="export"><span>Esporta backup</span></button>
@@ -1437,10 +1442,21 @@ function deleteAccountSheet() {
   });
 }
 
+/* ============ prossimamente ============ */
+const ROADMAP = [
+  { id: "bank", icon: "wallet", premium: true, title: "Conti collegati in automatico", text: "Hype, Revolut e le banche italiane sincronizzate da sole tramite open banking: movimenti e saldi senza scrivere niente." },
+  { id: "history", icon: "label", premium: true, title: "Storico prezzi completo", text: "Il prezzo degli ultimi mesi appena aggiungi un link, con avviso quando scende sotto la soglia che scegli." },
+  { id: "shared", icon: "flag", premium: true, title: "Obiettivi condivisi", text: "Risparmiate in due o in gruppo per un viaggio o un regalo, ognuno con la sua parte." },
+  { id: "wrapped", icon: "receipt", premium: false, title: "Il mese di Keepo", text: "A inizio mese un riepilogo animato di come è andata, da salvare o condividere." },
+  { id: "roundup", icon: "coins", premium: false, title: "Arrotonda e risparmia", text: "Gli spiccioli di ogni spesa messi da parte in automatico." },
+  { id: "native", icon: "sync", premium: false, title: "App per iPhone e Apple Watch", text: "Widget nativi sulla schermata Home, sul quadrante e nel Centro di Controllo, dall'App Store." }
+];
+
 /* ============ Siri, widget e Comandi Rapidi ============ */
 const SHORTCUTS = [["Uscita Keepo", "Chiede importo e categoria e segna una spesa", "minus"],
                    ["Entrata Keepo", "Chiede importo e categoria e segna un'entrata", "plus"],
-                   ["Saldo Keepo", "Ti dice il saldo e il riepilogo del mese", "receipt"]];
+                   ["Saldo Keepo", "Ti dice il saldo e il riepilogo del mese", "receipt"],
+                   ["Pagamento Keepo", "Per l'automazione Apple Pay: segna da solo ogni pagamento", "wallet"]];
 async function sha256hex(t) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -1465,6 +1481,17 @@ function siriSheet() {
       <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>, e scegli i comandi di Keepo.</p>
       <p><b>Mac:</b> i comandi arrivano anche sul Mac con iCloud. Aggiungili al widget Comandi Rapidi nel Centro Notifiche, o fissali nella barra dei menu da Comandi Rapidi → Impostazioni.</p>
       <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Keepo.</p>
+    </div>
+
+    <div class="group-h"><span>4 · Pagamenti Apple Pay in automatico</span></div>
+    <div class="card howto">
+      <p>Ogni volta che paghi con Apple Pay (carta Hype, Revolut…) Keepo segna l'uscita da solo, sul conto giusto, con il nome del negozio.</p>
+      <p><b>1.</b> Aggiungi il comando <b>Pagamento Keepo</b> qui sopra e avvialo una volta a mano, per salvare il codice.</p>
+      <p><b>2.</b> Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b> e scegli <b>Transazione</b>.</p>
+      <p><b>3.</b> Seleziona le carte (es. Hype e Revolut), scegli <b>Esegui immediatamente</b> e tocca <b>Avanti</b> → <b>Nuova automazione vuota</b>.</p>
+      <p><b>4.</b> Aggiungi l'azione <b>Testo</b> e scrivi dentro, usando le variabili che compaiono sopra la tastiera: <b>Importo</b> ; <b>Esercente</b> ; <b>Carta</b> (separati da punto e virgola).</p>
+      <p><b>5.</b> Aggiungi l'azione <b>Esegui comando rapido</b>, scegli <b>Pagamento Keepo</b> e come input il <b>Testo</b> del passo 4. Fine.</p>
+      <p class="pnote">Il conto viene riconosciuto se il nome della carta contiene il nome del conto in Keepo (es. "Hype"). Bonifici e pagamenti online senza Apple Pay vanno segnati a mano.</p>
     </div>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     $("#qGen").onclick = async () => {
@@ -1886,6 +1913,14 @@ document.addEventListener("click", e => {
     if (e.target.closest("[data-acc-manage]")) { accountsSheet(); return; }
     if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
     const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
+  }
+  const it = e.target.closest("[data-interest]");
+  if (it) {
+    const list = new Set(S.settings.interest || []), id = it.dataset.interest;
+    list.has(id) ? list.delete(id) : list.add(id);
+    saveSettings({ interest: [...list] });
+    if (list.has(id)) { toast("Segnato: ti avviso quando arriva"); mascotReact("jump"); }
+    return;
   }
   if (e.target.closest("[data-budgets]") && !e.target.closest(".sheet")) { budgetSheet(); return; }
   const mb0 = e.target.closest("[data-mascot]");

@@ -92,18 +92,27 @@ def movement(kind):
         *show_message(rid)]
     return actions
 
+def payment():
+    """Per l'automazione Apple Pay: riceve "importo;negozio;carta" e lo manda a Keepo, poi mostra una notifica."""
+    rid, vid = U(), U()
+    code_acts, code = token_action()
+    shortcut_input = {"Value": {"string": "\uFFFC", "attachmentsByRange": {"{0, 1}": {"Type": "ExtensionInput"}}}, "WFSerializationType": "WFTextTokenString"}
+    return [*code_acts, request(rid, "quick_pay", [("p_token", code), ("p_raw", shortcut_input)]),
+            act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFGetDictionaryValueType": "Value", "WFDictionaryKey": "messaggio"}),
+            act("is.workflow.actions.notification", {"WFNotificationActionTitle": "Keepo", "WFNotificationActionBody": var_text(vid, "Dictionary Value"), "WFNotificationActionSound": False})]
+
 def balance():
     tid, rid = U(), U()
     code_acts, code = token_action()
     return [*code_acts, request(rid, "quick_balance", [("p_token", code)]), *show_message(rid)]
 
-def workflow(actions, glyph, color):
+def workflow(actions, glyph, color, takes_input=False):
     return {
         "WFWorkflowClientVersion": "2605.0.5", "WFWorkflowMinimumClientVersion": 900, "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": color, "WFWorkflowIconGlyphNumber": glyph},
         "WFWorkflowImportQuestions": [],
-        "WFWorkflowTypes": ["NCWidget", "WatchKit"], "WFWorkflowInputContentItemClasses": [],
-        "WFWorkflowHasShortcutInputVariables": False, "WFWorkflowHasOutputFallback": False,
+        "WFWorkflowTypes": ["NCWidget", "WatchKit"] if not takes_input else [], "WFWorkflowInputContentItemClasses": ["WFStringContentItem", "WFGenericFileContentItem"] if takes_input else [],
+        "WFWorkflowHasShortcutInputVariables": takes_input, "WFWorkflowHasOutputFallback": False,
         "WFQuickActionSurfaces": [], "WFWorkflowOutputContentItemClasses": [],
         "WFWorkflowActions": actions}
 
@@ -111,11 +120,12 @@ def workflow(actions, glyph, color):
 BRAND = os.environ.get("SD_BRAND", "Keepo")
 SPECS = [(f"Uscita {BRAND}", movement("out"), 59511, 463140863),
          (f"Entrata {BRAND}", movement("in"), 59511, 431817727),
-         (f"Saldo {BRAND}", balance(), 59446, 4282601983)]
+         (f"Saldo {BRAND}", balance(), 59446, 4282601983),
+         (f"Pagamento {BRAND}", payment(), 59446, 463140863)]
 out = os.environ.get("SD_OUT") or os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
 for name, actions, glyph, color in SPECS:
     with tempfile.NamedTemporaryFile(suffix=".shortcut", delete=False) as f:
-        plistlib.dump(workflow(actions, glyph, color), f, fmt=plistlib.FMT_BINARY); raw = f.name
+        plistlib.dump(workflow(actions, glyph, color, takes_input=name.startswith("Pagamento")), f, fmt=plistlib.FMT_BINARY); raw = f.name
     dest = os.path.join(out, name + ".shortcut")
     r = subprocess.run(["shortcuts", "sign", "--mode", "anyone", "--input", raw, "--output", dest], capture_output=True, text=True)
     print(name, "->", "ok" if r.returncode == 0 and os.path.exists(dest) else ("ERRORE " + r.stderr.strip()))
