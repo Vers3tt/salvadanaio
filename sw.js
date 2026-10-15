@@ -1,6 +1,6 @@
 // Offline cache. Our own files: always revalidated with the server (no stale 10-minute HTTP cache),
 // cached copy used only when offline. Supabase API calls are never cached.
-const VERSION = "keepo-v31";
+const VERSION = "keepo-v32";
 const SHELL = ["./", "index.html", "app.js", "config.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/apple-touch-icon.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"];
@@ -16,7 +16,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const req = e.request, url = new URL(req.url);
-  if (req.method !== "GET" || /supabase\.co$/.test(url.hostname)) return;
+  if (req.method !== "GET" || /supabase\.co$/.test(url.hostname) || /\.mp4$/.test(url.pathname)) return; // video: let the browser stream it
   const own = url.origin === self.location.origin;
   e.respondWith(
     fetch(own ? new Request(req, { cache: "no-cache" }) : req).then(res => {

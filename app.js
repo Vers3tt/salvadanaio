@@ -209,7 +209,7 @@ function mascotSay(btn) {
   host.appendChild(b);
   clearTimeout(bubbleTimer);
   const ms = Math.min(9000, 3500 + text.length * 45);
-  bubbleTimer = setTimeout(() => { b.classList.add("out"); setTimeout(() => b.remove(), 400); }, ms);
+  if (!DEMO) bubbleTimer = setTimeout(() => { b.classList.add("out"); setTimeout(() => b.remove(), 400); }, ms);
 }
 
 const CATS = {
@@ -230,7 +230,11 @@ const CFG_LS = "salvadanaio.cfg";
 let S = { tx: {}, goals: {}, rec: {}, settings: {}, pending: [], mode: null, lastSync: 0 };
 try { Object.assign(S, JSON.parse(localStorage.getItem(LS) || "{}")); } catch {}
 S.rec = S.rec || {}; S.settings = S.settings || {};
+// ?demo: example data kept only in memory, used for the guide and its screenshots
+const DEMO = new URLSearchParams(location.search).has("demo");
+if (DEMO) S = demoState();
 function save() {
+  if (DEMO) return;
   try { localStorage.setItem(LS, JSON.stringify(S)); }
   catch { toast("Memoria del telefono piena: elimina qualche immagine"); }
 }
@@ -702,6 +706,7 @@ function moreScreen() {
   const last = S.lastSync ? new Date(S.lastSync).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
   return `
   <header class="nav"><div><h1>Altro</h1></div>${mascot()}</header>
+  <a class="card guide-link" href="guida/" target="_blank" rel="noopener">${ic("receipt", 22)}<span><b>Guida all'uso</b><small>Come funziona Keepo, in due minuti</small></span>${ic("chevR", 16)}</a>
   <div class="group-h"><span>Account</span></div>
   <div class="list">
     ${cloud ? `<div class="cell"><span>Email</span><span>${esc(session?.user?.email || "")}</span></div>
@@ -1210,7 +1215,7 @@ function goalSheet(id) {
       ${workTime(g.price) ? `<div class="plan">${ic("clock", 18)}<span>Ti costa circa <b>${esc(workTime(g.price))}</b> di lavoro.</span></div>` : ""}
       ${g.deadline && !ok ? `<div class="plan">${ic("calendar", 18)}<span>${esc(deadlinePlan(g))}</span></div>` : ""}
     </div>
-    ${g.url && S.mode === "cloud" ? `<div class="pricebox" id="priceBox">${priceBox(g, null)}</div>` : ""}
+    ${g.url && (S.mode === "cloud" || DEMO) ? `<div class="pricebox" id="priceBox">${priceBox(g, null)}</div>` : ""}
     ${g.url ? `<a class="save ghost linkbtn" href="${esc(g.url)}" target="_blank" rel="noopener">${ic("external", 18)}Apri su ${esc(hostOf(g.url))}</a>` : ""}
     <button class="save ${ok ? "in" : "ghost"}" id="gBuy">${ok ? "L'ho comprato" : "L'ho comprato lo stesso"}</button>
     <div id="buyBox"></div>
@@ -1468,6 +1473,60 @@ function iconNotice() {
     <div class="notice-acts">${iconSteps ? "" : `<button class="link" data-icon-steps>Come si fa</button>`}<button class="link muted" data-icon-ok>Ho capito</button></div></div></div>`;
 }
 
+/* ============ demo ============ */
+function demoState() {
+  const now = Date.now(), d0 = new Date(), tx = {}, accs = [
+    { id: "a-conto", name: "Conto corrente", color: "#0E9F8E" }, { id: "a-hype", name: "Hype", color: "#E0A100" }, { id: "a-rev", name: "Revolut", color: "#2F6FE4" }];
+  let k = 0; const add = (type, euro, cat, note, daysAgo, account) => { const id = "d-tx" + (k++); tx[id] = { id, type, amount: Math.round(euro * 100), cat, note, ts: now - daysAgo * DAY - (k % 7) * 3600e3, account }; };
+  for (let m = 3; m >= 0; m--) {
+    const b = m * 30;
+    if (b + 4 <= 120 && (m || d0.getDate() > 4)) add("in", 1450, "Stipendio", "Stipendio", b + 4 - (m ? 0 : 0), "a-conto");
+    if (m) add("out", 390, "Casa", "Affitto", b + 1, "a-conto");
+    add("out", 62.4 + m * 7, "Spesa", "Conad", b + 2, "a-hype"); add("out", 48.1 + m * 3, "Spesa", "Esselunga", b + 9, "a-conto");
+    add("out", 18.5, "Ristoranti", "Pizzeria da Gino", b + 6, "a-rev"); add("out", 4.2, "Ristoranti", "Bar Centrale", b + 1, "a-hype");
+    add("out", 39, "Trasporti", "Abbonamento metro", b + 5, "a-conto"); add("out", 65 + m * 4, "Bollette", "Luce e gas", b + 12, "a-conto");
+    add("out", 12.99, "Svago", "Spotify e Netflix", b + 14, "a-rev"); add("out", 25 + m * 6, "Shopping", "Zalando", b + 18, "a-rev");
+    add("out", 150, TRANSFER, "Conto corrente → Hype", b + 8, "a-conto"); add("in", 150, TRANSFER, "Conto corrente → Hype", b + 8, "a-hype");
+  }
+  add("in", 80, "Regalo", "Compleanno", 20, "a-rev"); add("in", 350, "Vendita", "Vinted", 45, "a-rev"); add("in", 120, "Lavoretto", "Ripetizioni", 11, "a-conto");
+  add("out", 7.8, "Ristoranti", "Colazione", 0, "a-hype"); add("out", 3.5, "Trasporti", "Metro", 0, "a-hype");
+  const goals = {
+    "d-cuffie": { id: "d-cuffie", name: "Cuffie wireless", price: 27900, img: "guida/img/prodotto-cuffie.png", url: "https://www.amazon.it/dp/esempio", deadline: null, done: false, done_at: null, created_at: now - 40 * DAY, last_price: 24900, last_checked: new Date(now - 3600e3).toISOString() },
+    "d-bici": { id: "d-bici", name: "Fotocamera mirrorless", price: 429900, img: "guida/img/prodotto-fotocamera.png", url: null, deadline: new Date(d0.getFullYear() + 1, 5, 1).toISOString().slice(0, 10), done: false, done_at: null, created_at: now - 60 * DAY },
+    "d-console": { id: "d-console", name: "Sneakers", price: 12900, img: "guida/img/prodotto-sneakers.png", url: null, deadline: null, done: false, done_at: null, created_at: now - 20 * DAY }
+  };
+  const nextRent = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 1, 9).getTime();
+  const rec = { "d-rec": { id: "d-rec", type: "out", amount: 39000, cat: "Casa", note: "Affitto", freq: "month", next_ts: nextRent, active: true, created_at: now - 90 * DAY } };
+  return { tx, goals, rec, pending: [], mode: "local", lastSync: now,
+    settings: { onboarded: true, accounts: accs, budgets: { Ristoranti: 6000, Shopping: 8000 }, hourly: 1050, wageMode: "month", monthly: 145000, weekHours: "38" } };
+}
+
+// ?demo&scene=… opens one screen of the guide, ready to be photographed
+function demoScene() {
+  const sc = new URLSearchParams(location.search).get("scene") || "home";
+  const fill = (t, sel, val) => { const el = $(sel); if (el) { el.value = val; el.dispatchEvent(new Event("input", { bubbles: true })); } };
+  const keys = str => [...str].forEach(k => document.querySelector(`[data-k="${k}"]`)?.click());
+  const scenes = {
+    home: () => setTab("home"),
+    conti: () => { showAccounts = true; setTab("home"); },
+    uscita: () => { setTab("home"); txSheet("out"); setTimeout(() => { keys("12,50"); document.querySelector('[data-cat="Ristoranti"]')?.click(); fill(0, "#txNote", "Pizza con amici"); }, 60); },
+    scontrino: () => { setTab("home"); txSheet("out"); setTimeout(() => { keys("23,47"); document.querySelector('[data-cat="Spesa"]')?.click(); fill(0, "#txNote", "Conad Superstore"); const m = $("#scanMsg"); if (m) { m.textContent = "Letto: totale 23,47 €, negozio, data, categoria Spesa. Controlla e salva."; m.className = "peek ok"; } }, 60); },
+    movimenti: () => setTab("mov"),
+    obiettivi: () => setTab("goals"),
+    obiettivo: () => { setTab("goals"); goalSheet("d-cuffie"); },
+    prezzo: () => { setTab("goals"); goalSheet("d-cuffie"); setTimeout(() => { const sh = $(".sheet"), pb = $("#priceBox"); if (sh && pb) { sh.style.animation = "none"; sh.scrollTop = pb.offsetTop - 30; } }, 900); },
+    nuovoobiettivo: () => { setTab("goals"); goalEditSheet(); setTimeout(() => { fill(0, "#gName", "Cuffie wireless"); fill(0, "#gPrice", "249,00"); $("#gUrl").value = "https://amzn.eu/d/esempio"; const p = $("#gPeek"); p.textContent = "Letto dal link: prezzo 249,00 €, nome, foto. Controlla e salva."; p.className = "peek ok"; }, 80); },
+    budget: () => { document.documentElement.classList.add("demo-budget"); setTab("home"); },
+    keepo: () => { setTab("home"); setTimeout(() => { const b = $(".nav [data-mascot]") || $("[data-mascot]"); if (b) mascotSay(b); }, 60); },
+    siri: () => { setTab("more"); siriSheet(); },
+    altro: () => setTab("more"),
+    trasferimento: () => { setTab("home"); transferSheet(); setTimeout(() => fill(0, "#tAmt", "150"), 60); },
+    lavoro: () => { setTab("goals"); }
+  };
+  (scenes[sc] || scenes.home)();
+  setTimeout(() => document.activeElement?.blur?.(), 400);
+}
+
 /* ============ prossimamente ============ */
 const ROADMAP = [
   { id: "bank", icon: "wallet", premium: true, title: "Conti collegati in automatico", text: "Hype, Revolut e le banche italiane sincronizzate da sole tramite open banking: movimenti e saldi senza scrivere niente." },
@@ -1683,6 +1742,7 @@ function cleanTitle(t) {
   return t;
 }
 async function loadPriceHistory(goalId) {
+  if (DEMO) { const n = Date.now(), base = [29900, 29900, 28990, 29490, 27900, 27990, 26900, 27490, 24900]; return goalId === "d-cuffie" ? base.map((p, i) => ({ p, t: n - (base.length - 1 - i) * 3 * DAY })) : []; }
   if (!sb || !session) return [];
   const { data, error } = await sb.from("price_history").select("price,checked_at").eq("goal_id", goalId).order("checked_at");
   if (error) return null;
@@ -2005,6 +2065,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) sync
 let splashOn = !!document.getElementById("splash"), authHeld = false;
 (function splash() {
   const el = $("#splash"); if (!el) return;
+  if (DEMO) { el.remove(); splashOn = false; return; }
   $("#splashLogo").setAttribute("viewBox", "-8 -8 116 116");
   $("#splashLogo").innerHTML = logoTile() + logoInner();
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2019,7 +2080,8 @@ let splashOn = !!document.getElementById("splash"), authHeld = false;
 })();
 
 /* ============ boot ============ */
-if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
+if (DEMO) { document.documentElement.classList.add("demo"); const z = +new URLSearchParams(location.search).get("zoom"); if (z) { document.documentElement.style.zoom = z; document.documentElement.classList.add("demo-zoom"); } render(); setTimeout(demoScene, 50); window.__keepo = { txSheet, goalSheet, goalEditSheet, accountsSheet, budgetSheet, siriSheet, wageSheet, transferSheet, splitSheet, recurringSheet, setTab, mascotSay, render }; }
+else if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
 else { render(); runRecurring(); }
 (function quickFromUrl() {
   const p = new URLSearchParams(location.search), n = p.get("new");

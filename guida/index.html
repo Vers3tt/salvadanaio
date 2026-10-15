@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Guida a Keepo</title>
+<meta name="description" content="Come usare Keepo: entrate e uscite in pochi tocchi, conti, obiettivi con il prezzo dal link, Siri e Apple Pay.">
+<link rel="icon" type="image/png" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<style>
+/* Layout: a "video" player first (phone + caption + chapters), then requirements and FAQ.
+   Same palette and type as the app: midnight navy on cool white, SF system font. */
+:root{
+  --bg:#F3F5F9; --card:#FFFFFF; --fill:#E9EDF4; --line:rgba(16,28,60,.1);
+  --ink:#111C38; --ink2:#5E6984; --ink3:#A4ACBF; --navy:#162448; --green:#18795C; --green-soft:#E1F1EB;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-d:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#080D1A; --card:#121A2E; --fill:#1C2640; --line:rgba(200,215,255,.1);
+  --ink:#EDF1FA; --ink2:#97A2BC; --ink3:#56617C; --green:#5CCBA3; --green-soft:rgba(92,203,163,.14); color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#080D1A;--card:#121A2E;--fill:#1C2640;--line:rgba(200,215,255,.1);--ink:#EDF1FA;--ink2:#97A2BC;--ink3:#56617C;--green:#5CCBA3;--green-soft:rgba(92,203,163,.14);color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased}
+body{padding:calc(env(safe-area-inset-top,0px) + 20px) 16px 60px}
+a{color:inherit}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:6px}
+.wrap{max-width:1100px;margin:0 auto}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand img{width:48px;height:48px;border-radius:12px;box-shadow:0 0 0 1px var(--line)}
+.brand b{display:block;font-family:var(--font-d);font-size:22px;letter-spacing:-.02em}
+.brand span{color:var(--ink2);font-size:14px}
+.open{background:var(--navy);color:#fff;border-radius:12px;padding:11px 16px;font-weight:600;text-decoration:none;white-space:nowrap}
+
+h1{font-family:var(--font-d);font-size:clamp(32px,6vw,52px);letter-spacing:-.035em;line-height:1.05;margin:0 0 10px;text-wrap:balance}
+.lead{color:var(--ink2);font-size:18px;max-width:60ch;margin:0 0 30px;line-height:1.5}
+
+/* player */
+.player{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:40px;align-items:center;background:var(--card);border-radius:28px;padding:34px}
+@media (max-width:820px){.player{grid-template-columns:1fr;gap:22px;padding:22px 16px}}
+.phone{position:relative;width:100%;max-width:300px;margin:0 auto;aspect-ratio:390/844;border-radius:48px;background:#0B0F1A;padding:12px;box-shadow:0 30px 60px -30px rgba(10,20,50,.55),inset 0 0 0 2px #2A3045}
+.screen{position:relative;width:100%;height:100%;border-radius:37px;overflow:hidden;background:var(--bg)}
+.screen img{position:absolute;top:6%;left:0;width:100%;height:94%;object-fit:cover;object-position:top;opacity:0;transition:opacity .55s ease}
+.sbar{position:absolute;top:0;left:0;right:0;height:6%;display:flex;align-items:center;justify-content:space-between;padding:0 9% 0 13%;font:600 13px/1 var(--font);color:#111C38;z-index:2;background:#F3F5F9}
+.sbar i{width:42px;height:11px;background:linear-gradient(90deg,#111C38 0 46%,transparent 46% 56%,#111C38 56%);-webkit-mask:linear-gradient(#000 0 0);border-radius:3px;opacity:.85}
+.screen img.on{opacity:1;animation:kb 6.5s ease-out both}
+@keyframes kb{from{transform:scale(1.035)}to{transform:scale(1)}}
+.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:32%;height:22px;border-radius:12px;background:#0B0F1A;z-index:3}
+.tap{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;z-index:4;pointer-events:none;opacity:0}
+.tap.on{animation:tap 1.6s ease-out .9s 2}
+.tap::before,.tap::after{content:"";position:absolute;inset:0;border-radius:50%}
+.tap::before{background:rgba(255,255,255,.55);box-shadow:0 0 0 2px rgba(17,28,56,.65)}
+.tap::after{box-shadow:0 0 0 2px rgba(17,28,56,.5);animation:inherit;animation-name:ring}
+@keyframes tap{0%{opacity:0;transform:scale(1.4)}20%{opacity:1;transform:scale(.85)}55%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1)}}
+@keyframes ring{0%,20%{transform:scale(1);opacity:0}40%{opacity:.9}100%{transform:scale(2.2);opacity:0}}
+
+.side{display:grid;gap:18px;min-width:0}
+.step-n{font-size:13px;font-weight:600;color:var(--ink2);letter-spacing:.02em}
+.side h2{font-family:var(--font-d);font-size:clamp(24px,3.4vw,34px);letter-spacing:-.03em;margin:0;line-height:1.12;text-wrap:balance}
+.side p{margin:0;color:var(--ink2);font-size:17px;line-height:1.55;max-width:52ch}
+.side .how{background:var(--fill);border-radius:14px;padding:12px 14px;font-size:15px;color:var(--ink);line-height:1.5}
+.side .how b{font-weight:600}
+.caption{display:grid;gap:12px;min-height:250px;align-content:start}
+.caption.fade{animation:cap .45s ease}
+@keyframes cap{from{opacity:0;transform:translateY(8px)}}
+.bars{display:grid;grid-auto-flow:column;gap:4px}
+.bars button{height:4px;border-radius:2px;background:var(--fill);overflow:hidden;position:relative}
+.bars button i{position:absolute;inset:0;background:var(--ink);transform-origin:left;transform:scaleX(0)}
+.bars button.done i{transform:scaleX(1)}
+.bars button.cur i{animation:fill var(--dur) linear forwards}
+.paused .bars button.cur i{animation-play-state:paused}
+@keyframes fill{to{transform:scaleX(1)}}
+.ctrls{display:flex;gap:10px;align-items:center}
+.ctrl{width:46px;height:46px;border-radius:50%;background:var(--fill);display:grid;place-items:center}
+.ctrl.play{background:var(--navy);color:#fff;width:54px;height:54px}
+.ctrl svg{width:20px;height:20px}
+.ctrls span{color:var(--ink2);font-size:14px;margin-left:6px}
+
+.chapters{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+.chapters button{background:var(--card);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
+.chapters button[aria-current="true"]{background:var(--ink);color:var(--bg);box-shadow:none}
+
+section{margin-top:56px}
+section h3{font-family:var(--font-d);font-size:28px;letter-spacing:-.025em;margin:0 0 6px}
+section .sub{color:var(--ink2);margin:0 0 20px;font-size:16px}
+.needs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.need{background:var(--card);border-radius:18px;padding:18px;display:grid;gap:6px;align-content:start}
+.need .tag{justify-self:start;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2);background:var(--fill);border-radius:6px;padding:3px 7px}
+.need .tag.ok{color:var(--green);background:var(--green-soft)}
+.need b{font-size:17px}
+.need p{margin:0;color:var(--ink2);font-size:15px;line-height:1.5}
+.video{background:var(--card);border-radius:22px;padding:14px;display:grid;gap:10px}
+.video video{width:100%;border-radius:14px;background:#0B0F1A;aspect-ratio:16/9}
+.video p{margin:0 4px 4px;color:var(--ink2);font-size:14px}
+details{background:var(--card);border-radius:16px;padding:16px 18px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:600;font-size:16px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::after{content:"+";color:var(--ink2);font-weight:400;font-size:20px;line-height:1}
+details[open] summary::after{content:"−"}
+details p{margin:10px 0 0;color:var(--ink2);line-height:1.55;font-size:15.5px}
+footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
+@media (prefers-reduced-motion:reduce){.screen img.on,.tap.on,.caption.fade{animation:none}.bars button.cur i{animation:none;transform:scaleX(1)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><img src="../icons/icon-192.png" alt=""><div><b>Keepo</b><span>Guida all'app</span></div></div>
+    <a class="open" href="../">Apri Keepo</a>
+  </header>
+
+  <h1>Keepo in due minuti</h1>
+  <p class="lead">Segna entrate e uscite in pochi tocchi, tieni separati i tuoi conti e metti da parte i soldi per quello che vuoi comprare. Guarda come funziona: la guida scorre da sola, puoi fermarla o scegliere un capitolo.</p>
+
+  <div class="player" id="player">
+    <div class="phone" aria-hidden="true"><div class="screen" id="screen"><div class="sbar"><span>9:41</span><i></i></div><div class="notch"></div><span class="tap" id="tap"></span></div></div>
+    <div class="side">
+      <div class="bars" id="bars"></div>
+      <div class="caption" id="caption" aria-live="polite"></div>
+      <div class="ctrls">
+        <button class="ctrl" id="prev" aria-label="Passo precedente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 6-6 6 6 6"/></svg></button>
+        <button class="ctrl play" id="play" aria-label="Pausa"></button>
+        <button class="ctrl" id="next" aria-label="Passo successivo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 6 6-6 6"/></svg></button>
+        <span id="count"></span>
+      </div>
+    </div>
+  </div>
+  <div class="chapters" id="chapters"></div>
+
+  <section id="video-sec" hidden>
+    <h3>La guida in video</h3>
+    <p class="sub">Lo stesso percorso in un video da guardare o da mandare a chi vuole provare Keepo.</p>
+    <div class="video"><video id="video" controls preload="metadata" playsinline poster="img/home.jpg"></video><p>Senza audio: le didascalie sono nel video.</p></div>
+  </section>
+
+  <section>
+    <h3>Cosa ti serve</h3>
+    <p class="sub">Keepo è un'app web: niente App Store, si installa dal browser.</p>
+    <div class="needs">
+      <div class="need"><span class="tag ok">Indispensabile</span><b>iPhone, Android o un computer</b><p>Apri <b>vers3tt.github.io/salvadanaio</b>. Su iPhone usa Safari → Condividi → Aggiungi alla schermata Home; su Mac, Safari → File → Aggiungi al Dock.</p></div>
+      <div class="need"><span class="tag ok">Consigliato</span><b>Un account Keepo</b><p>Email e password: i dati restano sincronizzati tra telefono e computer e non li perdi se cambi dispositivo. Senza account restano solo su quel dispositivo.</p></div>
+      <div class="need"><span class="tag">Facoltativo</span><b>Comandi Rapidi di Apple</b><p>Per segnare spese con Siri, dai widget, dal Centro di Controllo, dall'Apple Watch e in automatico con Apple Pay. Li trovi in Altro → Siri e widget.</p></div>
+      <div class="need"><span class="tag">Facoltativo</span><b>Fotocamera</b><p>Per leggere gli scontrini. La foto viene letta sul telefono e non viene inviata a nessuno.</p></div>
+      <div class="need"><span class="tag">Facoltativo</span><b>Internet</b><p>Serve per sincronizzare, leggere i prezzi dai link e la prima lettura di uno scontrino. Puoi segnare spese anche offline: si inviano appena torni online.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h3>Domande frequenti</h3>
+    <details><summary>I miei dati sono al sicuro?</summary><p>Ogni account vede solo i propri dati: le regole del database lo impediscono a chiunque altro. Keepo non si collega alla tua banca e non chiede dati della carta. Puoi esportare un backup o eliminare l'account in qualsiasi momento da Altro.</p></details>
+    <details><summary>Come funziona il saldo degli obiettivi?</summary><p>Tutto il saldo conta per ogni obiettivo: se hai 300 € e un obiettivo da 279 €, è raggiunto. Quando premi "L'ho comprato" Keepo segna l'uscita (anche divisa tra più conti) e gli altri obiettivi si aggiornano.</p></details>
+    <details><summary>Come legge il prezzo dal link?</summary><p>Quando incolli il link di un prodotto Keepo apre la pagina e legge prezzo, nome e foto. Poi la ricontrolla ogni mattina e costruisce il grafico: ti dice quando il prezzo è il più basso visto. Alcuni siti bloccano la lettura automatica: in quel caso lo scrivi tu.</p></details>
+    <details><summary>Ho pagato con due conti, come lo segno?</summary><p>Apri il movimento e tocca "Dividi tra più conti": scrivi quanto è uscito da ogni conto, il resto va da solo senza conto. Per spostare soldi tra conti (es. una ricarica di Hype) usa "Sposta tra conti": non conta come entrata o uscita.</p></details>
+    <details><summary>Sulla schermata Home vedo ancora il vecchio nome o la vecchia icona</summary><p>iOS non aggiorna nome e icona delle app web. Elimina l'app dalla schermata Home e aggiungila di nuovo da Safari: se hai un account, i dati restano.</p></details>
+    <details><summary>Keepo è gratis?</summary><p>Sì. In futuro alcune funzioni avanzate, come il collegamento automatico dei conti bancari, potrebbero far parte di un abbonamento Premium facoltativo. Quello che usi oggi resta gratuito.</p></details>
+  </section>
+
+  <footer>Keepo · <a href="../privacy.html">Privacy</a> · <a href="../termini.html">Termini d'uso</a> · le schermate usano dati di esempio · foto dei prodotti da <a href="https://unsplash.com/it/licenza">Unsplash</a></footer>
+</div>
+
+<script>
+(() => {
+  // x,y = where the tap animation points, in % of the screen (null = no tap)
+  const STEPS = [
+    { img: "home", ch: "Inizio", t: "Il tuo saldo, a colpo d'occhio", d: "La Home mostra quanto hai, come è cambiato e quanto manca al prossimo obiettivo. Scegli il periodo del grafico: 1 mese, 3, 6 o un anno.", how: "Tocca <b>Uscita</b> o <b>Entrata</b> per segnare un movimento.", x: 27, y: 64 },
+    { img: "uscita", ch: "Movimenti", t: "Una spesa in tre tocchi", d: "Scrivi l'importo con il tastierino, scegli la categoria e il conto. Keepo ti dice anche quanto lavoro ti costa.", how: "Importo → <b>categoria</b> → <b>Aggiungi uscita</b>. Con <b>Ripeti</b> la rendi mensile (affitto, abbonamenti).", x: 12, y: 33.5 },
+    { img: "scontrino", ch: "Scontrino", t: "Oppure fotografa lo scontrino", d: "Keepo legge totale, negozio, data e indovina la categoria. La lettura avviene sul telefono: la foto non va da nessuna parte.", how: "Nel pannello del movimento tocca <b>Scontrino</b>, in alto a destra.", x: 86, y: 5.5 },
+    { img: "conti", ch: "Conti", t: "Ogni conto con il suo saldo", d: "Conto corrente, Hype, Revolut, contanti: assegna ogni movimento a un conto e vedi quanto c'è su ognuno.", how: "In Home tocca <b>Vedi per conto</b>. I conti si creano in Altro → <b>Conti</b>.", x: 22, y: 31 },
+    { img: "trasferimento", ch: "Trasferimenti", t: "Sposta soldi tra conti", d: "Una ricarica da conto corrente a Hype non è né un'entrata né un'uscita: il totale non cambia e i grafici restano puliti.", how: "Vedi per conto → <b>Sposta tra conti</b>. Se un acquisto l'hai pagato con due conti, aprilo e tocca <b>Dividi tra più conti</b>.", x: null },
+    { img: "movimenti", ch: "Lista", t: "Tutto in ordine, mese per mese", d: "Cerca per nota o categoria, filtra entrate, uscite e singoli conti. Tocca un movimento per modificarlo.", how: "Scheda <b>Movimenti</b>, in basso.", x: 77, y: 27 },
+    { img: "budget", ch: "Budget", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria. Con un budget Keepo ti avvisa all'80% e quando lo superi.", how: "Tocca <b>Budget</b> per impostare un tetto di spesa al mese.", x: 50, y: 46 },
+    { img: "obiettivi", ch: "Obiettivi", t: "Metti da parte per ciò che vuoi", d: "Ogni obiettivo si confronta con tutto il tuo saldo. Vedi la percentuale, quanto ti costa in giorni di lavoro e la data da rispettare.", how: "Scheda <b>Obiettivi</b> → <b>+</b>.", x: 24, y: 20 },
+    { img: "nuovoobiettivo", ch: "Link", t: "Incolla il link, al resto pensa Keepo", d: "Da Amazon e da molti negozi Keepo legge prezzo, nome e foto del prodotto. Tu controlli e salvi.", how: "Nuovo obiettivo → incolla il <b>link al prodotto</b>.", x: 50, y: 35 },
+    { img: "prezzo", ch: "Prezzi", t: "Compra al momento giusto", d: "Ogni mattina Keepo ricontrolla il prezzo e disegna il grafico: ti dice quando è il più basso visto o se conviene aspettare.", how: "Apri l'obiettivo e guarda il riquadro <b>Prezzo</b>. Con <b>L'ho comprato</b> segni l'acquisto.", x: 62, y: 45 },
+    { img: "keepo", ch: "Keepo", t: "Keepo ti tiene d'occhio", d: "La moneta in alto ti dice le cose importanti: budget quasi finiti, prezzi in calo, quanto manca a un obiettivo, i pagamenti in arrivo.", how: "Tocca <b>Keepo</b>, poi il fumetto per il messaggio successivo.", x: 89, y: 6 },
+    { img: "siri", ch: "Siri", t: "Con Siri, i widget e Apple Pay", d: "\"Ehi Siri, Uscita Keepo\", un widget sulla schermata Home, il Centro di Controllo, l'Apple Watch. E ogni pagamento Apple Pay segnato da solo.", how: "Altro → <b>Siri, widget e Comandi Rapidi</b>: genera il codice e aggiungi i comandi.", x: 50, y: 34.5 },
+    { img: "altro", ch: "Altro", t: "Il resto è in Altro", d: "Conti, budget, movimenti ricorrenti, quanto ti costa davvero, backup e le novità in arrivo: tocca Mi interessa su quelle che vuoi.", how: "Scheda <b>Altro</b>, in basso a destra.", x: null }
+  ];
+  const DUR = 7000;
+  const $ = s => document.querySelector(s);
+  const screen = $("#screen"), tap = $("#tap"), bars = $("#bars"), cap = $("#caption"), player = $("#player");
+  let i = 0, playing = !matchMedia("(prefers-reduced-motion: reduce)").matches, timer = null, started = 0, elapsed = 0;
+
+  STEPS.forEach((s, k) => {
+    const im = new Image(); im.src = `img/${s.img}.jpg`; im.alt = ""; im.decoding = "async"; screen.insertBefore(im, tap); s.el = im;
+    bars.insertAdjacentHTML("beforeend", `<button aria-label="Passo ${k + 1}: ${s.t}"><i></i></button>`);
+  });
+  $("#chapters").innerHTML = STEPS.map((s, k) => `<button data-k="${k}">${s.ch}</button>`).join("");
+  document.documentElement.style.setProperty("--dur", DUR + "ms");
+
+  const icons = { play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>', pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>' };
+  function show(k, fromUser) {
+    i = (k + STEPS.length) % STEPS.length; const s = STEPS[i];
+    STEPS.forEach((x, n) => x.el.classList.toggle("on", n === i));
+    [...bars.children].forEach((b, n) => { b.className = n < i ? "done" : n === i ? "cur" : ""; const c = b.firstChild; c.style.animation = "none"; void c.offsetWidth; c.style.animation = ""; });
+    tap.classList.remove("on");
+    if (s.x != null) { tap.style.left = s.x + "%"; tap.style.top = s.y + "%"; void tap.offsetWidth; tap.classList.add("on"); }
+    cap.innerHTML = `<span class="step-n">${i + 1} di ${STEPS.length} · ${s.ch}</span><h2>${s.t}</h2><p>${s.d}</p><div class="how">${s.how}</div>`;
+    cap.classList.remove("fade"); void cap.offsetWidth; cap.classList.add("fade");
+    $("#count").textContent = `${i + 1} / ${STEPS.length}`;
+    document.querySelectorAll("#chapters button").forEach((b, n) => b.setAttribute("aria-current", n === i));
+    elapsed = 0; schedule();
+  }
+  function schedule() {
+    clearTimeout(timer);
+    if (!playing) return;
+    started = Date.now();
+    timer = setTimeout(() => show(i + 1), DUR - elapsed);
+  }
+  function setPlaying(p) {
+    if (!p && playing) elapsed += Date.now() - started;
+    playing = p; player.classList.toggle("paused", !p);
+    $("#play").innerHTML = p ? icons.pause : icons.play; $("#play").setAttribute("aria-label", p ? "Pausa" : "Riproduci");
+    schedule();
+  }
+  $("#play").onclick = () => setPlaying(!playing);
+  $("#next").onclick = () => show(i + 1, true);
+  $("#prev").onclick = () => show(i - 1, true);
+  bars.onclick = e => { const b = e.target.closest("button"); if (b) show([...bars.children].indexOf(b), true); };
+  $("#chapters").onclick = e => { const b = e.target.closest("[data-k]"); if (b) { show(+b.dataset.k, true); player.scrollIntoView({ behavior: "smooth", block: "center" }); } };
+  document.addEventListener("keydown", e => { if (e.key === "ArrowRight") show(i + 1, true); if (e.key === "ArrowLeft") show(i - 1, true); if (e.key === " " && e.target === document.body) { e.preventDefault(); setPlaying(!playing); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && playing) setPlaying(false); });
+  setPlaying(playing); show(0);
+
+  // the MP4 version, when it is published next to this page
+  fetch("keepo-guida.mp4", { method: "HEAD" }).then(r => { if (r.ok) { $("#video").src = "keepo-guida.mp4"; $("#video-sec").hidden = false; } }).catch(() => {});
+})();
+</script>
+</body>
+</html>
