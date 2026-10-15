@@ -702,14 +702,14 @@ function goalsScreen() {
 }
 
 function moreScreen() {
-  const cloud = S.mode === "cloud";
+  const cloud = S.mode === "cloud" || DEMO;
   const last = S.lastSync ? new Date(S.lastSync).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "mai";
   return `
   <header class="nav"><div><h1>Altro</h1></div>${mascot()}</header>
   <a class="card guide-link" href="guida/" target="_blank" rel="noopener">${ic("receipt", 22)}<span><b>Guida all'uso</b><small>Come funziona Keepo, in due minuti</small></span>${ic("chevR", 16)}</a>
   <div class="group-h"><span>Account</span></div>
   <div class="list">
-    ${cloud ? `<div class="cell"><span>Email</span><span>${esc(session?.user?.email || "")}</span></div>
+    ${cloud ? `<div class="cell"><span>Email</span><span>${esc(DEMO ? "giulia@esempio.it" : session?.user?.email || "")}</span></div>
       <div class="cell"><span>Ultimo aggiornamento</span><span id="syncText">${esc(last)}</span></div>
       <button class="cell btn" data-more="sync"><span>Aggiorna adesso</span></button>
       <button class="cell btn" data-more="password"><span>Cambia password</span></button>
@@ -753,7 +753,7 @@ function moreScreen() {
 function syncBadge() {
   const f = $("#sideFoot");
   if (f) f.innerHTML = S.mode === "cloud"
-    ? `<span>${esc(session?.user?.email || "")}</span>${!navigator.onLine ? `<span class="warn">${ic("cloudOff", 14)}Offline</span>` : S.pending.length ? `<span>${ic("sync", 14)}${S.pending.length} da inviare</span>` : ""}`
+    ? `<span>${esc(DEMO ? "giulia@esempio.it" : session?.user?.email || "")}</span>${!navigator.onLine ? `<span class="warn">${ic("cloudOff", 14)}Offline</span>` : S.pending.length ? `<span>${ic("sync", 14)}${S.pending.length} da inviare</span>` : ""}`
     : `<span>Dati solo su questo dispositivo</span>`;
   const b = $("#syncBadge");
   if (!b || S.mode !== "cloud") { if (b) b.innerHTML = ""; return; }
@@ -1495,6 +1495,7 @@ function demoState() {
     "d-bici": { id: "d-bici", name: "Fotocamera mirrorless", price: 429900, img: "guida/img/prodotto-fotocamera.png", url: null, deadline: new Date(d0.getFullYear() + 1, 5, 1).toISOString().slice(0, 10), done: false, done_at: null, created_at: now - 60 * DAY },
     "d-console": { id: "d-console", name: "Sneakers", price: 12900, img: "guida/img/prodotto-sneakers.png", url: null, deadline: null, done: false, done_at: null, created_at: now - 20 * DAY }
   };
+  if (new URLSearchParams(location.search).has("rec")) delete goals["d-console"];   // nel video le sneakers si aggiungono a mano
   const nextRent = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 1, 9).getTime();
   const rec = { "d-rec": { id: "d-rec", type: "out", amount: 39000, cat: "Casa", note: "Affitto", freq: "month", next_ts: nextRent, active: true, created_at: now - 90 * DAY } };
   return { tx, goals, rec, pending: [], mode: "local", lastSync: now,

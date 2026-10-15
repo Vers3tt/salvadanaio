@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="../icons/icon-192.png">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <style>
-/* Layout: a "video" player first (phone + caption + chapters), then requirements and FAQ.
+/* Layout: the recorded video first, then a step-by-step player (phone + caption + chapters), then requirements and FAQ.
    Same palette and type as the app: midnight navy on cool white, SF system font. */
 :root{
   --bg:#F3F5F9; --card:#FFFFFF; --fill:#E9EDF4; --line:rgba(16,28,60,.1);
@@ -113,7 +113,16 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
   </header>
 
   <h1>Keepo in due minuti</h1>
-  <p class="lead">Segna entrate e uscite in pochi tocchi, tieni separati i tuoi conti e metti da parte i soldi per quello che vuoi comprare. Guarda come funziona: la guida scorre da sola, puoi fermarla o scegliere un capitolo.</p>
+  <p class="lead">Segna entrate e uscite in pochi tocchi, tieni separati i tuoi conti e metti da parte i soldi per quello che vuoi comprare. Guarda il video: è l'app vera, usata dall'inizio alla fine.</p>
+
+  <section id="video-sec" style="margin-top:0">
+    <div class="video"><video id="video" src="keepo-guida.mp4" controls preload="metadata" playsinline poster="img/video-poster.jpg"></video><p>Senza audio: le spiegazioni sono scritte nel video. Puoi mandarlo a chi vuole provare Keepo.</p></div>
+  </section>
+
+  <section style="margin-top:44px">
+    <h3>Passo per passo</h3>
+    <p class="sub">Le stesse funzioni una alla volta, con il punto da toccare. Scorre da sola: puoi fermarla o scegliere un capitolo.</p>
+  </section>
 
   <div class="player" id="player">
     <div class="phone" aria-hidden="true"><div class="screen" id="screen"><div class="sbar"><span>9:41</span><i></i></div><div class="notch"></div><span class="tap" id="tap"></span></div></div>
@@ -129,12 +138,6 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
     </div>
   </div>
   <div class="chapters" id="chapters"></div>
-
-  <section id="video-sec" hidden>
-    <h3>La guida in video</h3>
-    <p class="sub">Lo stesso percorso in un video da guardare o da mandare a chi vuole provare Keepo.</p>
-    <div class="video"><video id="video" controls preload="metadata" playsinline poster="img/home.jpg"></video><p>Senza audio: le didascalie sono nel video.</p></div>
-  </section>
 
   <section>
     <h3>Cosa ti serve</h3>
@@ -226,7 +229,6 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
   setPlaying(playing); show(0);
 
   // the MP4 version, when it is published next to this page
-  fetch("keepo-guida.mp4", { method: "HEAD" }).then(r => { if (r.ok) { $("#video").src = "keepo-guida.mp4"; $("#video-sec").hidden = false; } }).catch(() => {});
 })();
 </script>
 </body>

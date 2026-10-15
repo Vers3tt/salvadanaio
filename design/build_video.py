@@ -1,34 +1,34 @@
-"""Genera guida/keepo-guida.mp4 dalle schermate della guida (guida/img) e dai testi di guida/index.html.
-Uso: python3 design/build_video.py   (richiede: pip install --user imageio-ffmpeg pillow)"""
-import os, re, subprocess, html
+"""Monta guida/keepo-guida.mp4 dalla registrazione dell'app vera fatta da design/record_video.mjs.
+Uso: node design/record_video.mjs && python3 design/build_video.py   (richiede: pip install --user imageio-ffmpeg pillow)"""
+import os, json, bisect, subprocess
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import imageio_ffmpeg
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 W, H, FPS = 1920, 1080, 30
-STEP_S, INTRO_S, OUTRO_S, FADE_S = 5.4, 3.2, 3.6, .5
+INTRO_S, OUTRO_S = 3.2, 3.6
 BG, CARD, INK, INK2, INK3, NAVY, GREEN, FILL = (243, 245, 249), (255, 255, 255), (17, 28, 56), (94, 105, 132), (164, 172, 191), (22, 36, 72), (24, 121, 92), (233, 237, 244)
 SF = "/System/Library/Fonts/SFNS.ttf"
 
 def font(px, w=400):
     f = ImageFont.truetype(SF, px); f.set_variation_by_axes([100, min(96, max(17, px * .75)), 400, w]); return f
 
-# ---- steps from the guide page ----
-src = open(os.path.join(ROOT, "guida", "index.html"), encoding="utf-8").read()
-STEPS = []
-for m in re.finditer(r'\{ img: "(\w+)", ch: "([^"]+)", t: "([^"]+)", d: "((?:[^"\\]|\\.)+)", how: "((?:[^"\\]|\\.)+)", x: (null|[\d.]+)(?:, y: ([\d.]+))?', src):
-    clean = lambda s: html.unescape(re.sub(r"<[^>]+>", "", s.replace('\\"', '"')))
-    STEPS.append(dict(img=m[1], ch=m[2], t=clean(m[3]), d=clean(m[4]), how=clean(m[5]), x=None if m[6] == "null" else float(m[6]), y=float(m[7]) if m[7] else None))
-print(len(STEPS), "passi")
+# ---- registrazione ----
+REC = os.path.join(ROOT, "design", "rec")
+TL = json.load(open(os.path.join(REC, "timeline.json")))
+LOG = TL["log"]; T0 = next(e["t"] for e in LOG if e["type"] == "start"); T1 = next(e["t"] for e in LOG if e["type"] == "end")
+FR = sorted(TL["frames"], key=lambda f: f["t"]); FT = [f["t"] for f in FR]
+CHAPS = [e for e in LOG if e["type"] == "chap"]; TOUCH = [e for e in LOG if e["type"] in ("tap", "swipe", "drag")]
+REC_S = T1 - T0
+print(len(FR), "fotogrammi,", len(CHAPS), "capitoli,", round(REC_S, 1), "s")
 
 # ---- static pieces ----
-PH_H = 820; PH_W = int(PH_H * 390 / 844); BEZ = 14
+PH_H = 900; PH_W = int(PH_H * 390 / 844); BEZ = 14
 SCR_W, SCR_H = PH_W - 2 * BEZ, PH_H - 2 * BEZ
 PH_X, PH_Y = 300, (H - PH_H) // 2 - 10
 def rounded_mask(w, h, r):
     m = Image.new("L", (w * 2, h * 2), 0); ImageDraw.Draw(m).rounded_rectangle([0, 0, w * 2 - 1, h * 2 - 1], radius=r * 2, fill=255); return m.resize((w, h), Image.LANCZOS)
 SCR_MASK = rounded_mask(SCR_W, SCR_H, 44)
-screens = {s["img"]: Image.open(os.path.join(ROOT, "guida", "img", s["img"] + ".jpg")).convert("RGB") for s in STEPS}
 
 base = Image.new("RGB", (W, H), BG)
 d = ImageDraw.Draw(base)
@@ -54,24 +54,22 @@ def wrap(text, f, width):
     return lines
 
 def caption_layer(i):
-    s = STEPS[i]; im = Image.new("RGBA", (TW + 40, 760), (0, 0, 0, 0)); d = ImageDraw.Draw(im); y = 0
-    d.text((0, y), f"{i + 1} di {len(STEPS)}  ·  {s['ch']}", font=font(28, 600), fill=INK2); y += 58
-    ft = font(62, 750)
-    for ln in wrap(s["t"], ft, TW): d.text((0, y), ln, font=ft, fill=INK); y += 72
-    y += 18; fd = font(33)
-    for ln in wrap(s["d"], fd, TW): d.text((0, y), ln, font=fd, fill=INK2); y += 47
-    y += 26; fh = font(30, 500); lines = wrap(s["how"], fh, TW - 44)
-    d.rounded_rectangle([0, y, TW, y + 30 + len(lines) * 42], radius=20, fill=FILL)
-    for k, ln in enumerate(lines): d.text((22, y + 15 + k * 42), ln, font=fh, fill=INK)
-    return im, y + 30 + len(lines) * 42
-CAPS = [caption_layer(i) for i in range(len(STEPS))]
+    c = CHAPS[i]; im = Image.new("RGBA", (TW + 40, 600), (0, 0, 0, 0)); d = ImageDraw.Draw(im); y = 0
+    d.text((0, y), f"{i + 1} di {len(CHAPS)}", font=font(28, 600), fill=INK2); y += 58
+    ft = font(64, 750)
+    for ln in wrap(c["title"], ft, TW): d.text((0, y), ln, font=ft, fill=INK); y += 74
+    y += 22; fd = font(34)
+    for ln in wrap(c["text"], fd, TW): d.text((0, y), ln, font=fd, fill=INK2); y += 48
+    return im, y
+CAPS = [caption_layer(i) for i in range(len(CHAPS))]
 
-def progress(d, i, f):
-    n = len(STEPS); x0, x1, y = TX, W - 140 - 80, H - 150; gap = 8; w = (x1 - x0 - gap * (n - 1)) / n
+def progress(d, t):
+    n = len(CHAPS); x0, x1, y = TX, W - 140 - 80, H - 150; gap = 8; w = (x1 - x0 - gap * (n - 1)) / n
     for k in range(n):
         a = x0 + k * (w + gap); d.rounded_rectangle([a, y, a + w, y + 6], radius=3, fill=FILL)
-        fill = 1 if k < i else (f if k == i else 0)
-        if fill > 0: d.rounded_rectangle([a, y, a + w * fill, y + 6], radius=3, fill=INK)
+        s0 = CHAPS[k]["t"]; s1 = CHAPS[k + 1]["t"] if k + 1 < n else T1
+        f = max(0, min(1, (t - s0) / (s1 - s0)))
+        if f > 0: d.rounded_rectangle([a, y, a + w * f, y + 6], radius=3, fill=INK)
 
 SB = int(SCR_H * .058)  # iPhone status bar above the app content
 def status_bar():
@@ -81,37 +79,53 @@ def status_bar():
     for k in range(4): h = 4 + k * 3; d.rectangle([x - 58 + k * 6, SB // 2 + 8 - h, x - 54 + k * 6, SB // 2 + 8], fill=INK)
     return sb
 SBAR = status_bar()
-def screen_img(name, zoom):
-    im = screens[name]; ch = SCR_H - SB; sw = int(SCR_W * zoom); sh = int(im.height * sw / im.width)
-    r = im.resize((sw, sh), Image.BILINEAR); ox = (sw - SCR_W) // 2
-    body = r.crop((ox, 0, ox + SCR_W, ch))
-    out = Image.new("RGB", (SCR_W, SCR_H), BG); out.paste(SBAR, (0, 0)); out.paste(body, (0, SB)); return out
+SC_H = int(TL["H"] * SCR_W / TL["W"])   # altezza del fotogramma registrato dentro lo schermo
+_cache = {}
+def screen_at(t):
+    k = max(0, bisect.bisect_right(FT, t) - 1); n = FR[k]["n"]
+    if n not in _cache:
+        _cache.clear()
+        im = Image.open(os.path.join(REC, "f", f"{n}.jpg")).convert("RGB").resize((SCR_W, SC_H), Image.LANCZOS)
+        out = Image.new("RGB", (SCR_W, SCR_H), BG); out.paste(SBAR, (0, 0)); out.paste(im.crop((0, 0, SCR_W, SCR_H - SB)), (0, SB)); _cache[n] = out
+    return _cache[n]
 
 def ease(t): t = max(0, min(1, t)); return t * t * (3 - 2 * t)
+def to_px(x, y): return PH_X + BEZ + x * SCR_W, PH_Y + BEZ + SB + y * SC_H
 
-def step_frame(i, t):
-    s = STEPS[i]; fr = base.copy(); d = ImageDraw.Draw(fr)
-    cur = screen_img(s["img"], 1.035 - .035 * ease(t / STEP_S))
-    if i > 0 and t < FADE_S:
-        prev = screen_img(STEPS[i - 1]["img"], 1.0); cur = Image.blend(prev, cur, ease(t / FADE_S))
-    fr.paste(cur, (PH_X + BEZ, PH_Y + BEZ), SCR_MASK)
+def finger(ov, cx, cy, a, press):
+    od = ImageDraw.Draw(ov); r = 22 * (1 - .18 * press)
+    od.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255, int(150 * a)), outline=(17, 28, 56, int(150 * a)), width=3)
+
+def touches(fr, t):
+    ov = None
+    for e in TOUCH:
+        if e["type"] == "tap":
+            u = t - e["t"]
+            if -.35 <= u <= .55:
+                ov = ov or Image.new("RGBA", (W, H), (0, 0, 0, 0)); cx, cy = to_px(e["x"], e["y"])
+                a = ease((u + .35) / .2) * (1 - ease((u - .25) / .3)); press = ease(1 - abs(u) / .12) if abs(u) < .12 else 0
+                finger(ov, cx, cy, a, press)
+                if u >= 0:   # onda del tocco
+                    rr = 22 + 30 * ease(u / .45); ImageDraw.Draw(ov).ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(17, 28, 56, int(130 * (1 - u / .55))), width=3)
+        else:
+            u = (t - e["t"]) / e["dur"]
+            if -.15 <= u <= 1.15:
+                ov = ov or Image.new("RGBA", (W, H), (0, 0, 0, 0)); k = ease(u)
+                if e["type"] == "swipe": cx, cy = to_px(e["x"], e["y0"] + (e["y1"] - e["y0"]) * k)
+                else: cx, cy = to_px(e["x0"] + (e["x1"] - e["x0"]) * k, e["y"])
+                a = ease((u + .15) / .15) * (1 - ease((u - 1) / .15)); finger(ov, cx, cy, a, .5)
+    if ov: fr.paste(ov, (0, 0), ov)
+
+def rec_frame(t):
+    fr = base.copy(); d = ImageDraw.Draw(fr)
+    fr.paste(screen_at(t), (PH_X + BEZ, PH_Y + BEZ), SCR_MASK)
     d.rounded_rectangle([PH_X + PH_W // 2 - 62, PH_Y + 24, PH_X + PH_W // 2 + 62, PH_Y + 56], radius=16, fill=(11, 15, 26))
-    # tap ring
-    if s["x"] is not None:
-        cx, cy = PH_X + BEZ + s["x"] / 100 * SCR_W, PH_Y + BEZ + s["y"] / 100 * SCR_H
-        for start in (1.2, 2.9):
-            u = (t - start) / 1.3
-            if 0 <= u <= 1:
-                ov = Image.new("RGBA", (W, H), (0, 0, 0, 0)); od = ImageDraw.Draw(ov)
-                r = 26 * (1.25 - .25 * ease(min(1, u * 4))); a = int(255 * (1 - ease(max(0, u - .55) / .45)))
-                od.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 255, 255, int(a * .55)), outline=(17, 28, 56, int(a * .7)), width=3)
-                rr = 26 + 34 * ease(u); od.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=(17, 28, 56, int(160 * (1 - u))), width=3)
-                fr.paste(ov, (0, 0), ov)
-    cap, ch = CAPS[i]; a = ease(t / .6); dy = int(18 * (1 - a))
-    cy0 = (H - ch) // 2 - 30 + dy
+    touches(fr, t)
+    i = max(0, bisect.bisect_right([c["t"] for c in CHAPS], t) - 1)
+    cap, ch = CAPS[i]; a = ease((t - CHAPS[i]["t"]) / .6); dy = int(18 * (1 - a))
     if a < 1: cap = cap.copy(); cap.putalpha(cap.getchannel("A").point(lambda v: int(v * a)))
-    fr.paste(cap, (TX, cy0), cap)
-    progress(d, i, t / STEP_S)
+    fr.paste(cap, (TX, (H - ch) // 2 - 40 + dy), cap)
+    progress(d, t)
     return fr
 
 def title_frame(t, intro):
@@ -132,12 +146,11 @@ def title_frame(t, intro):
 
 out = os.path.join(ROOT, "guida", "keepo-guida.mp4")
 cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "24", "-preset", "medium", "-movflags", "+faststart", out]
+       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", out]
 p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 def emit(img): p.stdin.write(img.tobytes())
 for k in range(int(INTRO_S * FPS)): emit(title_frame(k / FPS, True))
-for i in range(len(STEPS)):
-    for k in range(int(STEP_S * FPS)): emit(step_frame(i, k / FPS))
+for k in range(int(REC_S * FPS)): emit(rec_frame(T0 + k / FPS))
 for k in range(int(OUTRO_S * FPS)): emit(title_frame(k / FPS, False))
 p.stdin.close(); p.wait()
 print(out, os.path.getsize(out) // 1024, "KB")
