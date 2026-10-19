@@ -1,7 +1,8 @@
 """Monta le clip della guida (guida/clip/*.mp4) dalle registrazioni reali del simulatore iOS.
 Stile: colori pieni del marchio che si alternano con una tendina, scritte grandi che entrano riga per riga,
 la "telecamera" che segue il telefono (avvicinamenti, leggera inclinazione), tocchi come nelle registrazioni di iOS.
-Uso: CLIP_SRC=/cartella/registrazioni python3 design/build_clips.py [nome ...]
+Uso: CLIP_SRC=/cartella/registrazioni python3 design/build_clips.py [nome ... | guida]
+("guida" rifà guida/keepo-guida.mp4 dalla registrazione di design/record_video.mjs)
 (registrazioni: mp4 a 30 fps, larghe 600 px, dello schermo dell'iPhone da 402x874 punti)"""
 import os, sys, math, re, subprocess
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -192,5 +193,84 @@ def render(name):
     enc.stdin.close(); enc.wait()
     print(name, f"{L + TAIL:.1f}s", os.path.getsize(out) // 1024, "KB")
 
-for nm in (sys.argv[1:] or CLIPS):
-    render(nm)
+
+# ======================= video completo della guida =======================
+# Usa la registrazione dell'app fatta da design/record_video.mjs (design/rec): fotogrammi + tocchi + capitoli.
+GUIDE_BEATS = [(["Il tuo saldo."], "Sempre davanti, con l'andamento dei mesi."), (["Una spesa?", "Due tocchi."], None),
+               (["Anche", "le entrate."], None), (["Ogni conto,", "il suo totale."], "Hype, Revolut, contanti…"),
+               (["Dove vanno", "i soldi?"], "Categorie e budget del mese."), (["Tutti i", "movimenti."], None),
+               (["Cosa vuoi", "comprarti?"], "Tutto il saldo fa avanzare gli obiettivi."), (["Il prezzo,", "giorno per giorno."], "Keepo ti dice quando conviene."),
+               (["Nuovo", "obiettivo."], "Nome, prezzo e foto del prodotto."), (["Keepo", "ti parla."], "Tocca la monetina per un consiglio."),
+               (["Siri, widget,", "Apple Pay."], "Segna senza aprire l'app.")]
+
+def status_bar(w, bg=LIGHT):
+    h = int(w * 54 / 402); im = Image.new("RGB", (w, h), bg); d = ImageDraw.Draw(im); k = w / 402
+    d.text((int(70 * k), h // 2 + int(4 * k)), "9:41", font=font(int(17 * k), 650), fill=INK, anchor="mm")
+    d.rounded_rectangle([w // 2 - int(62 * k), int(11 * k), w // 2 + int(62 * k), int(47 * k)], radius=int(18 * k), fill=(0, 0, 0))
+    x = w - int(34 * k); y = h // 2 + int(4 * k)
+    d.rounded_rectangle([x - int(24 * k), y - int(6 * k), x, y + int(6 * k)], radius=int(4 * k), outline=INK, width=max(1, int(1.5 * k))); d.rectangle([x - int(21 * k), y - int(3 * k), x - int(4 * k), y + int(3 * k)], fill=INK)
+    for i in range(4): bh = int((4 + i * 3) * k); d.rectangle([x - int(62 * k) + i * int(6 * k), y + int(5 * k) - bh, x - int(58 * k) + i * int(6 * k), y + int(5 * k)], fill=INK)
+    return im
+
+def render_guide():
+    import json, bisect
+    REC = os.path.join(ROOT, "design", "rec"); TL = json.load(open(os.path.join(REC, "timeline.json")))
+    log = TL["log"]; T0 = next(e["t"] for e in log if e["type"] == "start"); T1 = next(e["t"] for e in log if e["type"] == "end")
+    FR = sorted(TL["frames"], key=lambda f: f["t"]); FT = [f["t"] - T0 for f in FR]
+    chaps = [e["t"] - T0 for e in log if e["type"] == "chap"]
+    L = T1 - T0; TAIL = 3.0; total = int((L + TAIL) * FPS)
+    first = Image.open(os.path.join(REC, "f", f"{FR[0]['n']}.jpg")); fw, fh = first.size
+    SB = status_bar(fw); sbh = SB.height; sw, sh = fw, fh + sbh
+    taps = [(e["t"] - T0, e["x"] * fw, e["y"] * fh + sbh) for e in log if e["type"] == "tap"]
+    moves = [(e["t"] - T0, e["t"] - T0 + e["dur"]) for e in log if e["type"] in ("swipe", "drag")]
+    beats_src = [(t, *GUIDE_BEATS[i]) for i, t in enumerate(chaps)] + [(L, ["Prova Keepo."], "vers3tt.github.io/salvadanaio")]
+    n = len(beats_src); cols = [LIGHT if i % 2 == 0 else NAVY for i in range(n)]; cols[-1] = NAVY
+    if cols[-2] == NAVY: cols[-2] = LIGHT
+    beats = [dict(t=t, bg=cols[i], T=beat_type(lines, sub, cols[i])) for i, (t, lines, sub) in enumerate(beats_src)]
+    PH_IMG, OFF, SMASK, ph_h = build_phone(sw, sh); s0 = 900 / ph_h
+    out = os.path.join(ROOT, "guida", "keepo-guida.mp4")
+    enc = subprocess.Popen([FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "24", "-preset", "slow", "-movflags", "+faststart", out], stdin=subprocess.PIPE)
+    cache = {}; z, fy = 1.0, .5
+    for k in range(total):
+        t = k / FPS; ts = min(t, L)
+        j = max(0, bisect.bisect_right(FT, ts) - 1); nfr = FR[j]["n"]
+        if nfr not in cache:
+            cache.clear(); im = Image.new("RGB", (sw, sh), LIGHT); im.paste(SB, (0, 0)); im.paste(Image.open(os.path.join(REC, "f", f"{nfr}.jpg")).convert("RGB"), (0, sbh)); cache[nfr] = im
+        scr = cache[nfr].convert("RGBA"); d = ImageDraw.Draw(scr)
+        for tt, x, y in taps:
+            u = ts - tt
+            if -.12 <= u <= .5:
+                a = ease((u + .12) / .12) * (1 - ease((u - .18) / .3)); r = 25 * sw / 402 * (1 - .12 * (0 <= u <= .12))
+                d.ellipse([x - r, y - r, x + r, y + r], fill=(120, 120, 128, int(120 * a)), outline=(255, 255, 255, int(190 * a)), width=3)
+        # the camera follows the finger: closer while you tap, back out while scrolling or waiting
+        near = [(y, abs(ts - tt)) for tt, x, y in taps if abs(ts - tt) < 1.3]
+        moving = any(a - .2 <= ts <= b + .3 for a, b in moves)
+        tz = 1.0 if (moving or not near or t >= L) else 1.22
+        tfy = (sum(y / (dd + .3) for y, dd in near) / sum(1 / (dd + .3) for y, dd in near)) / sh if near and not moving else .5
+        z += (tz - z) * .05; fy += (min(.82, max(.18, tfy)) - fy) * .05
+        i = max(jj for jj, b in enumerate(beats) if b["t"] <= t + 1e-6); b = beats[i]
+        fr = Image.new("RGBA", (W, H), (*(beats[i - 1]["bg"] if i else b["bg"]), 255))
+        wu = ease((t - b["t"]) / .42) if i else 1
+        if wu > 0: ImageDraw.Draw(fr).rectangle([0, int(H * (1 - wu)), W, H], fill=b["bg"])
+        ph = PH_IMG.copy(); ph.paste(scr, (OFF, OFF), SMASK)
+        pt = t - b["t"]; punch = .035 * math.sin(math.pi * clamp(pt / .4)) if i else 0
+        outro = ease((t - L) / 1.2)
+        s = s0 * z * (1 + punch) * (1 - .12 * outro)
+        intro = back(t / .8, 1.1); rot = math.radians(1.1 * math.sin(t * .8) + 8 * (1 - ease(t / .8)) - 4 * outro)
+        Fx, Fy = OFF + .5 * sw, OFF + fy * sh
+        Tx = W / 2 + 6 * math.sin(t * .5)
+        Ty = max(845 - (z - 1) * 170, 430 + (Fy - (OFF - 14)) * s) + 7 * math.sin(t * 1.1) + (1 - intro) * 760 + 140 * outro
+        a_, bb = math.cos(rot) / s, math.sin(rot) / s; d_, e = -math.sin(rot) / s, math.cos(rot) / s
+        fr.alpha_composite(ph.transform((W, H), Image.AFFINE, (a_, bb, Fx - (a_ * Tx + bb * Ty), d_, e, Fy - (d_ * Tx + e * Ty)), resample=Image.BICUBIC))
+        fg = b["T"]["fg"] if wu > .5 else (INK if (beats[i - 1]["bg"] if i else b["bg"]) == LIGHT else WHITE)
+        ImageDraw.Draw(fr).text((W - 44, 62), "Keepo", font=font(26, 700), fill=fg, anchor="rs")
+        nxt_t = beats[i + 1]["t"] if i + 1 < n else 1e9
+        draw_type(fr, b["T"], t - b["t"] - (.14 if i else .25), clamp((t - (nxt_t - .24)) / .24))
+        enc.stdin.write(fr.convert("RGB").tobytes())
+    enc.stdin.close(); enc.wait()
+    print("keepo-guida", f"{L + TAIL:.1f}s", os.path.getsize(out) // 1024, "KB")
+
+if __name__ == "__main__":
+    for nm in (sys.argv[1:] or [*CLIPS, "guida"]):
+        render_guide() if nm == "guida" else render(nm)
