@@ -49,6 +49,10 @@ const P = {
   receipt: '<path d="M5.5 2.5v19l2.2-1.4 2.1 1.4 2.2-1.4 2.2 1.4 2.1-1.4 2.2 1.4v-19l-2.2 1.4-2.1-1.4-2.2 1.4-2.2-1.4-2.1 1.4z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
   sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  layout: '<rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/>',
+  grip: '<circle cx="9" cy="6" r="1.1" fill="currentColor"/><circle cx="15" cy="6" r="1.1" fill="currentColor"/><circle cx="9" cy="12" r="1.1" fill="currentColor"/><circle cx="15" cy="12" r="1.1" fill="currentColor"/><circle cx="9" cy="18" r="1.1" fill="currentColor"/><circle cx="15" cy="18" r="1.1" fill="currentColor"/>',
+  eye: '<path d="M2.5 12C3.5 9.3 7 5 12 5s8.5 4.3 9.5 7c-1 2.7-4.5 7-9.5 7s-8.5-4.3-9.5-7z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c5 0 8.5 4.3 9.5 7-.4 1-1.2 2.4-2.4 3.7M6.6 6.6C4.6 7.9 3.1 9.9 2.5 12c1 2.7 4.5 7 9.5 7 1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   minus: '<path d="M5 12h14"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   paste: '<rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h4"/>',
@@ -414,6 +418,7 @@ let tab = "home", movFilter = "all";
 try { tab = sessionStorage.getItem(LS + ".tab") || "home"; } catch {}
 
 function render() {
+  if (hlDrag) { hlDrag.renderAfter = true; return; }   // never rebuild the page under a widget being dragged
   const needsAuth = !S.mode || (S.mode === "cloud" && authReady && !session);
   if (needsAuth && splashOn) { authHeld = true; $("#app").innerHTML = ""; return; }
   if (!S.mode) return renderSetup();
@@ -434,7 +439,7 @@ function render() {
   <div class="side-foot" id="sideFoot"></div></div>`;
   syncBadge();
 }
-function setTab(t) { tab = t; try { sessionStorage.setItem(LS + ".tab", t); } catch {} render(); window.scrollTo(0, 0); }
+function setTab(t) { if (t !== tab) editHome = false; tab = t; try { sessionStorage.setItem(LS + ".tab", t); } catch {} render(); window.scrollTo(0, 0); }
 
 function dateTitle() {
   const s = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
@@ -450,13 +455,8 @@ function homeScreen() {
   const next = D.active.find(g => g.price > D.total);
   const ready = D.active.filter(g => g.price <= D.total).length;
   const months = monthStats();
-  return `
-  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Keepo</h1></div>${mascot()}</header>
-  <div id="syncBadge"></div>
-  ${iconNotice()}
-  ${checkNotice()}
-  <div class="home-grid"><div class="col-a">
-  <section class="card balance">
+  const W = {
+    balance: () => `<section class="card balance">
     <div class="bal-top"><span class="lbl">Saldo<button class="bal-check" data-check aria-label="Allinea il saldo con quello che hai davvero">${ic("sync", 13)}Allinea</button></span>
       <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
     <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
@@ -469,28 +469,34 @@ function homeScreen() {
   <div class="actions">
     <button class="act out" data-new="out">${ic("minus", 20)}Uscita</button>
     <button class="act in" data-new="in">${ic("plus", 20)}Entrata</button>
-  </div>
-  <section class="section">
+  </div>`,
+    monthly: () => `<section class="section">
     <div class="sec-h"><h2>Mese per mese</h2></div>
     <div class="card monthly">${monthlyChart(months)}${monthSummary(months[selMonth])}</div>
-  </section>
-  </div><div class="col-b">
-  <section class="section first">
+  </section>`,
+    cats: () => `<section class="section">
     <div class="sec-h"><h2>Dove vanno i soldi</h2><button class="link" data-budgets>${Object.keys(S.settings.budgets || {}).length ? "Budget" : "Imposta budget"}</button></div>
     <p class="sec-note">${esc(months[selMonth].label)}</p>
     ${categoryBreakdown(months[selMonth])}
-  </section>
-  <section class="section">
+  </section>`,
+    goals: () => `<section class="section">
     <div class="sec-h"><h2>Obiettivi</h2>${D.active.length ? `<button class="link" data-tab="goals">Tutti</button>` : ""}</div>
     ${D.active.length ? `<div class="goal-strip">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo</span></button></div>`
       : emptyCard("flag", "Cosa vuoi comprarti?", "Aggiungi un obiettivo con nome e prezzo. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
-  </section>
-  <section class="section">
+  </section>`,
+    recent: () => `<section class="section">
     <div class="sec-h"><h2>Ultimi movimenti</h2>${D.txs.length > 5 ? `<button class="link" data-tab="mov">Tutti</button>` : ""}</div>
     ${D.txs.length ? `<div class="list">${D.txs.slice(0, 5).map(txRow).join("")}</div>`
       : emptyCard("receipt", "Nessun movimento", "Tocca Entrata e segna i soldi che hai adesso: diventa il tuo saldo di partenza.")}
-  </section>
-  </div></div>`;
+  </section>`
+  };
+  return `
+  <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Keepo</h1></div><div class="nav-r">${editHome ? "" : `<button class="nav-btn ghost" data-hl-edit aria-label="Personalizza la Home" title="Personalizza la Home">${ic("layout", 19)}</button>`}${mascot()}</div></header>
+  <div id="syncBadge"></div>
+  ${iconNotice()}
+  ${checkNotice()}
+  ${homeGrid(W)}
+  ${editHome ? `<button class="save small hl-done-float" data-hl-done>Fine</button>` : `<button class="hl-open" data-hl-edit>${ic("layout", 16)}Personalizza la Home</button>`}`;
 }
 
 /* daily balance for the chosen range, oldest first */
@@ -1738,6 +1744,167 @@ function transferSheet() {
   });
 }
 
+/* ============ home personalizzabile ============ */
+// The Home is a set of widgets you can move and hide. Ported from the interaction of 21st.dev's
+// "Draggable Widget Grid": mouse and pen drag at once, touch needs a long press (so the page still
+// scrolls), keyboard uses Alt + arrows, and every move is animated. On desktop there are two columns.
+const WIDGETS = { balance: "Saldo", monthly: "Mese per mese", cats: "Dove vanno i soldi", goals: "Obiettivi", recent: "Ultimi movimenti" };
+const HL_DEFAULT = { order: ["balance", "monthly", "cats", "goals", "recent"], col: { balance: "a", monthly: "a", cats: "b", goals: "b", recent: "b" } };
+// ready-made layouts, one tap in edit mode
+const HL_PRESETS = [
+  { id: "full", name: "Completa", text: "Tutto in vista", order: ["balance", "monthly", "cats", "goals", "recent"], col: HL_DEFAULT.col, hidden: [] },
+  { id: "essential", name: "Essenziale", text: "Saldo e ultimi movimenti", order: ["balance", "recent", "goals", "monthly", "cats"], col: { balance: "a", recent: "b", goals: "b", monthly: "a", cats: "b" }, hidden: ["goals", "monthly", "cats"] },
+  { id: "goals", name: "Obiettivi prima", text: "Per chi mette da parte", order: ["balance", "goals", "recent", "cats", "monthly"], col: { balance: "a", goals: "b", recent: "b", cats: "a", monthly: "a" }, hidden: ["monthly"] },
+  { id: "spending", name: "Controllo spese", text: "Budget e mesi davanti", order: ["balance", "cats", "monthly", "recent", "goals"], col: { balance: "a", cats: "b", monthly: "a", recent: "b", goals: "b" }, hidden: ["goals"] }
+];
+let editHome = false, hlDrag = null;
+const isWide = () => matchMedia("(min-width: 900px)").matches;
+function homeLayout() {
+  const l = S.settings.homeLayout || {}, order = (l.order || []).filter(id => WIDGETS[id]);
+  HL_DEFAULT.order.forEach((id, i) => { if (!order.includes(id)) order.splice(Math.min(i, order.length), 0, id); });
+  return { order, col: { ...HL_DEFAULT.col, ...(l.col || {}) }, hidden: (l.hidden || []).filter(id => WIDGETS[id] && id !== "balance") };
+}
+function saveLayout(L, focusId) {
+  saveSettings({ homeLayout: { order: L.order, col: L.col, hidden: L.hidden } });
+  if (focusId) setTimeout(() => document.querySelector(`#homeGrid [data-w="${focusId}"]`)?.focus({ preventScroll: false }), 30);
+}
+function presetOf(L) {
+  const vis = L => L.order.filter(k => !L.hidden.includes(k)), same = (a, b) => a.join() === b.join();
+  return HL_PRESETS.find(p => same(vis(L), vis(p)) && (!isWide() || vis(L).every(k => L.col[k] === p.col[k])))?.id;
+}
+// tiny drawing of a preset: the widgets as blocks in their columns (one column on the phone)
+function presetThumb(p) {
+  const vis = p.order.filter(k => !p.hidden.includes(k)), h = { balance: 14, monthly: 9, cats: 11, goals: 9, recent: 10 };
+  const col = list => `<i>${list.map(k => `<u class="${k === "balance" ? "b" : ""}" style="height:${h[k]}px"></u>`).join("")}</i>`;
+  return `<span class="pthumb" aria-hidden="true">${isWide() ? col(vis.filter(k => p.col[k] === "a")) + col(vis.filter(k => p.col[k] === "b")) : col(vis)}</span>`;
+}
+function homeGrid(W) {
+  const L = homeLayout(), vis = L.order.filter(id => !L.hidden.includes(id));
+  const wrap = id => `<div class="w" data-w="${id}"${editHome ? ` tabindex="0" aria-roledescription="riquadro spostabile" aria-label="${WIDGETS[id]}. Alt e frecce per spostarlo"` : ""}>
+    ${editHome ? `<div class="w-tools"><span class="grip" aria-hidden="true" title="Trascina">${ic("grip", 18)}</span>${id === "balance" ? "" : `<button class="w-hide" data-hl-hide="${id}" aria-label="Nascondi ${WIDGETS[id]}">${ic("eyeOff", 16)}Nascondi</button>`}</div>` : ""}
+    <div class="w-body">${W[id]()}</div></div>`;
+  const cols = isWide() ? ["a", "b"].map(c => `<div class="col" data-col="${c}">${vis.filter(id => L.col[id] === c).map(wrap).join("")}</div>`).join("")
+    : `<div class="col" data-col="all">${vis.map(wrap).join("")}</div>`;
+  return `${editHome ? `<div class="edit-bar" role="region" aria-label="Personalizza la Home">
+      <div><b>Personalizza la Home</b><span>${matchMedia("(pointer: coarse)").matches ? "Tieni premuto un riquadro e trascinalo." : "Trascina i riquadri dove vuoi" + (isWide() ? ", anche nell'altra colonna." : ".")}</span></div>
+      <div class="edit-acts"><button class="save small" data-hl-done>Fine</button></div>
+      <div class="hl-presets" role="group" aria-label="Disposizioni pronte">${HL_PRESETS.map(p => `<button class="preset" data-hl-preset="${p.id}" aria-pressed="${presetOf(L) === p.id}">${presetThumb(p)}<span><b>${p.name}</b><small>${p.text}</small></span></button>`).join("")}</div>
+      ${L.hidden.length ? `<div class="hl-hidden"><span>Nascosti</span>${L.hidden.map(id => `<button class="pill sm" data-hl-show="${id}">${ic("eye", 15)}${WIDGETS[id]}</button>`).join("")}</div>` : ""}</div>` : ""}
+    <div class="home-grid${editHome ? " editing" : ""}" id="homeGrid">${cols}</div>`;
+}
+
+// FLIP: measure, change the DOM, then animate every widget from where it was to where it is
+function hlFlip(mutate) {
+  const els = [...document.querySelectorAll("#homeGrid .w:not(.dragging), #homeGrid .w-ph")];
+  const before = new Map(els.map(el => [el, el.getBoundingClientRect()]));
+  mutate();
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const el of els) {
+    const a = before.get(el), b = el.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top;
+    if (!dx && !dy) continue;
+    el.style.transition = "none"; el.style.transform = `translate(${dx}px,${dy}px)`;
+    el.getBoundingClientRect();
+    el.style.transition = "transform .24s cubic-bezier(.2,.8,.2,1)"; el.style.transform = "";
+  }
+}
+function hlBegin(w, x, y) {
+  const r = w.getBoundingClientRect(), ph = document.createElement("div");
+  ph.className = "w-ph"; ph.style.height = r.height + "px";
+  w.parentNode.insertBefore(ph, w);
+  hlDrag = { w, ph, id: w.dataset.w, dx: x - r.left, dy: y - r.top, x, y, raf: 0 };
+  w.classList.add("dragging");
+  Object.assign(w.style, { position: "fixed", left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px", margin: "0", zIndex: "60", transition: "none", transform: "" });
+  document.documentElement.classList.add("hl-dragging");
+  navigator.vibrate?.(12);
+  const tick = () => {   // auto-scroll near the edges while holding still
+    if (!hlDrag) return;
+    const edge = 80, v = hlDrag.y < edge ? -(edge - hlDrag.y) / 5 : hlDrag.y > innerHeight - edge ? (hlDrag.y - innerHeight + edge) / 5 : 0;
+    if (v) { scrollBy(0, v); hlPlace(); }
+    hlDrag.raf = requestAnimationFrame(tick);
+  };
+  hlDrag.raf = requestAnimationFrame(tick);
+}
+function hlPlace() {
+  const { w, ph, x, y } = hlDrag;
+  w.style.left = x - hlDrag.dx + "px"; w.style.top = y - hlDrag.dy + "px";
+  const cols = [...document.querySelectorAll("#homeGrid .col")];
+  const col = cols.find(c => { const r = c.getBoundingClientRect(); return x >= r.left && x <= r.right; })
+    || cols.reduce((best, c) => { const r = c.getBoundingClientRect(), d = Math.abs(x - (r.left + r.right) / 2); return !best || d < best.d ? { c, d } : best; }, null).c;
+  const items = [...col.children].filter(el => el.classList.contains("w") && el !== w);
+  const before = items.find(el => { const r = el.getBoundingClientRect(); return y < r.top + r.height / 2; }) || null;
+  if (ph.parentNode !== col || ph.nextElementSibling !== before) hlFlip(() => col.insertBefore(ph, before));
+}
+function hlEnd() {
+  const { w, ph, id, raf, renderAfter } = hlDrag; cancelAnimationFrame(raf);
+  const r = ph.getBoundingClientRect();
+  w.style.transition = "left .2s cubic-bezier(.2,.8,.2,1), top .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s";
+  w.style.left = r.left + "px"; w.style.top = r.top + "px";
+  setTimeout(() => {
+    const col = ph.parentNode, L = homeLayout();
+    if (col.dataset.col === "all") {
+      const seq = [...col.children].filter(el => el !== w).map(el => el === ph ? id : el.dataset.w).filter(Boolean);
+      L.order = [...seq, ...L.order.filter(k => !seq.includes(k))];
+    } else {
+      L.col[id] = col.dataset.col;
+      const sib = [...col.children].filter(el => el.classList.contains("w") && el !== w);
+      const idx = [...col.children].indexOf(ph), prev = [...col.children].slice(0, idx).filter(el => sib.includes(el)).pop(), next = [...col.children].slice(idx + 1).find(el => sib.includes(el));
+      L.order = L.order.filter(k => k !== id);
+      if (prev) L.order.splice(L.order.indexOf(prev.dataset.w) + 1, 0, id);
+      else if (next) L.order.splice(L.order.indexOf(next.dataset.w), 0, id);
+      else L.order.push(id);
+    }
+    document.documentElement.classList.remove("hl-dragging");
+    hlDrag = null;
+    saveLayout(L);
+  }, 210);
+}
+// keyboard: Alt + up/down moves inside the column, Alt + left/right changes column on desktop
+function hlKey(e) {
+  const w = e.target.closest?.("#homeGrid .w"); if (!editHome || !w || !e.altKey || !e.key.startsWith("Arrow")) return;
+  e.preventDefault();
+  const id = w.dataset.w, L = homeLayout(), wide = isWide();
+  if (e.key === "ArrowLeft" || e.key === "ArrowRight") { if (wide) { L.col[id] = e.key === "ArrowLeft" ? "a" : "b"; saveLayout(L, id); } return; }
+  const vis = L.order.filter(k => !L.hidden.includes(k) && (!wide || L.col[k] === L.col[id])), i = vis.indexOf(id), j = i + (e.key === "ArrowUp" ? -1 : 1);
+  if (j < 0 || j >= vis.length) return;
+  const a = L.order.indexOf(id), b = L.order.indexOf(vis[j]);
+  [L.order[a], L.order[b]] = [L.order[b], L.order[a]];
+  saveLayout(L, id);
+}
+document.addEventListener("keydown", hlKey);
+document.addEventListener("pointerdown", e => {
+  if (tab !== "home" || hlDrag || e.button > 0) return;
+  const w = e.target.closest("#homeGrid .w"); if (!w) return;
+  const touch = e.pointerType === "touch";
+  if (!editHome && !touch) return;
+  if (editHome && e.target.closest("button:not(.grip), a, input, select")) return;
+  const x0 = e.clientX, y0 = e.clientY, onGrip = !!e.target.closest(".grip");
+  let started = false, timer = 0, last = { x: x0, y: y0 };
+  // touch: long press (on the grip it starts at once). Outside edit mode a long press opens it.
+  if (touch && !onGrip) timer = setTimeout(() => {
+    timer = 0;
+    if (!editHome) { editHome = true; navigator.vibrate?.(15); render(); stop(); return; }
+    started = true; hlBegin(w, last.x, last.y);
+  }, editHome ? 260 : 520);
+  const move = ev => {
+    last = { x: ev.clientX, y: ev.clientY };
+    if (!started) {
+      const moved = Math.hypot(ev.clientX - x0, ev.clientY - y0);
+      if (timer) { if (moved > 9) stop(); return; }
+      if (!editHome || moved < 5) return;
+      started = true; hlBegin(w, x0, y0);
+    }
+    hlDrag.x = ev.clientX; hlDrag.y = ev.clientY; hlPlace();
+  };
+  const up = () => { stop(); if (started && hlDrag) hlEnd(); };
+  const stop = () => { clearTimeout(timer); timer = 0; removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); };
+  addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+});
+// while dragging with a finger the page must not scroll
+document.addEventListener("touchmove", e => { if (hlDrag) e.preventDefault(); }, { passive: false });
+// a click that ends a drag is not a tap on what is underneath
+document.addEventListener("click", e => { if (document.documentElement.classList.contains("hl-dragging")) { e.stopPropagation(); e.preventDefault(); } }, true);
+matchMedia("(min-width: 900px)").addEventListener?.("change", () => { if (tab === "home") render(); });
+
 /* ============ allinea il saldo ============ */
 // Keepo's balance drifts from real life (a forgotten coffee, coins found in a pocket). Here you type
 // what you really have and the difference is booked as an "Allineamento" movement on that account.
@@ -2074,6 +2241,12 @@ document.addEventListener("click", e => {
     const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
   }
   if (e.target.closest("[data-check]") && !e.target.closest(".sheet")) { checkSheet(); return; }
+  if (e.target.closest("[data-hl-edit]")) { editHome = true; render(); document.querySelector(".edit-bar")?.scrollIntoView({ block: "nearest" }); return; }
+  if (e.target.closest("[data-hl-done]")) { editHome = false; render(); toast("Home salvata"); return; }
+  const hp = e.target.closest("[data-hl-preset]");
+  if (hp) { const p = HL_PRESETS.find(x => x.id === hp.dataset.hlPreset); saveLayout({ order: [...p.order], col: { ...p.col }, hidden: [...p.hidden] }); toast(`Home: ${p.name}`); return; }
+  const hh = e.target.closest("[data-hl-hide]"); if (hh) { const L = homeLayout(); L.hidden.push(hh.dataset.hlHide); saveLayout(L); return; }
+  const hs = e.target.closest("[data-hl-show]"); if (hs) { const L = homeLayout(); L.hidden = L.hidden.filter(k => k !== hs.dataset.hlShow); saveLayout(L); return; }
   if (e.target.closest("[data-check-later]")) { saveSettings({ checkSnooze: Date.now() + 2 * DAY }); return; }
   if (e.target.closest("[data-icon-steps]")) { iconSteps = true; render(); return; }
   if (e.target.closest("[data-icon-ok]")) { try { localStorage.setItem(LS + ".iconv", String(ICON_VERSION)); } catch {} render(); return; }
