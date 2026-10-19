@@ -1617,27 +1617,21 @@ function siriSheet() {
 }
 
 /* ============ come appaiono i comandi ============ */
-// What you see on the iPhone when a command runs, drawn in the style of iOS (one small screen per step)
+// Real screen recordings of each command on an iPhone (iOS 27 simulator), in guida/clip/
+const clip = (name, label) => `<figure class="clip"><video src="guida/clip/${name}.mp4" autoplay muted loop playsinline preload="metadata" aria-label="${esc(label)}"></video></figure>`;
 function cmdRender(name) {
-  const total = money(Math.max(D.total, 0)), st = monthStats()[5];
-  const alert = (q, v) => `<div class="ios-scr"><span class="ios-cap">1 · Chiede l'importo</span><div class="ios-alert"><b>${esc(q)}</b><span class="ios-field">${esc(v)}<i class="ios-caret"></i></span><div class="ios-btns"><span>Annulla</span><span><b>Fine</b></span></div></div></div>`;
-  const pick = (list, sel) => `<div class="ios-scr"><span class="ios-cap">2 · Scegli la categoria</span><div class="ios-list"><b class="ios-list-h">Categoria</b>${list.map(c => `<span class="${c === sel ? "on" : ""}">${esc(c)}${c === sel ? "<i>✓</i>" : ""}</span>`).join("")}</div></div>`;
-  const done = (txt, cap = "3 · Fatto") => `<div class="ios-scr"><span class="ios-cap">${cap}</span><div class="ios-siri"><img src="icons/icon-192.png" alt="" width="30" height="30"><span>${esc(txt)}</span><span class="ios-ok">Fine</span></div></div>`;
-  const banner = txt => `<div class="ios-banner solo"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>${esc(txt)}</span><small>ora</small></div>`;
-  const say = t => `<div class="ios-say">${ic("mic", 14)}“${esc(t)}”</div>`;
   const R = {
-    "Uscita Keepo": () => `${say("Ehi Siri, Uscita Keepo")}<div class="ios-seq">${alert("Quanto hai speso?", "12,50")}${pick(["Spesa", "Ristoranti", "Trasporti", "Svago"], "Ristoranti")}${done(`Uscita di 12,50 € segnata. Saldo: ${total}`)}</div>`,
-    "Entrata Keepo": () => `${say("Ehi Siri, Entrata Keepo")}<div class="ios-seq">${alert("Quanto è entrato?", "50")}${pick(["Stipendio", "Paghetta", "Regalo", "Vendita"], "Regalo")}${done(`Entrata di 50,00 € segnata. Saldo: ${total}`)}</div>`,
-    "Saldo Keepo": () => `${say("Ehi Siri, Saldo Keepo")}<div class="ios-seq one">${done(`Saldo: ${total}. Questo mese: entrate ${money(st.in)}, uscite ${money(st.out)}.`, "Risponde")}</div>`,
-    "Pagamento Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando paghi con Apple Pay. Ti arriva questa notifica:</p>${banner(`Uscita di 4,20 € da Bar Centrale (Hype). Saldo: ${total}`)}<button class="link ios-more" data-auto-open="pay">Come si attiva ${ic("chevR", 14)}</button>`,
-    "Accredito Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando la banca ti scrive che hai ricevuto soldi. Ti arriva questa notifica:</p>${banner(`Entrata di 50,00 € su Hype. Saldo: ${total}`)}<button class="link ios-more" data-auto-open="mail">Come si attiva ${ic("chevR", 14)}</button>`
+    "Uscita Keepo": () => clip("uscita", "Video: Uscita Keepo chiede l’importo e la categoria e segna la spesa"),
+    "Entrata Keepo": () => clip("entrata", "Video: Entrata Keepo chiede l’importo e la categoria e segna l’entrata"),
+    "Saldo Keepo": () => clip("saldo", "Video: Saldo Keepo risponde con il saldo e il riepilogo del mese"),
+    "Pagamento Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando paghi con Apple Pay.</p><button class="link ios-more" data-auto-open="pay">Guarda come si attiva ${ic("chevR", 14)}</button>`,
+    "Accredito Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando la banca ti scrive che hai ricevuto soldi.</p><button class="link ios-more" data-auto-open="mail">Guarda come si attiva ${ic("chevR", 14)}</button>`
   };
-  return `<div class="ios cmd-ios" aria-hidden="false">${R[name]()}</div>`;
+  return R[name]();
 }
 
 /* ============ automazioni ============ */
-// Each automation is explained with a drawing of the iPhone screen it is built on (Comandi Rapidi,
-// in the style of Apple's Settings) whose numbered badges match the steps underneath.
+// Each automation is shown with a real recording of how it is set up in Comandi Rapidi, then the steps in words.
 // Where banks send their alerts from. Only addresses confirmed by the bank go in "addr";
 // otherwise the domain, and the user copies the exact address from one of their emails.
 const BANK_MAIL = [
@@ -1656,54 +1650,26 @@ const BANK_MAIL = [
 ];
 const bankFor = name => BANK_MAIL.find(b => (b.match || new RegExp(b.name.split(" ")[0], "i")).test(name));
 let mailBank = null;
-const iosSwitch = on => `<i class="ios-sw${on ? " on" : ""}"></i>`;
-const iosTok = (t, kind = "") => `<span class="ios-tok ${kind}">${esc(t)}</span>`;
-const nb = n => `<span class="nb">${n}</span>`;
 const AUTOMATIONS = [
   { id: "pay", icon: "wallet", title: "Uscite con Apple Pay", short: "Paghi con l'iPhone o l'Apple Watch e Keepo segna la spesa, sul conto della carta e con il nome del negozio.",
     shortcut: "Pagamento Keepo",
-    render: () => `<div class="ios">
-      <div class="ios-nav"><span>‹ Automazione</span><b>Nuova automazione</b><span class="ios-blue">Fine</span></div>
-      <div class="ios-h">Quando</div>
-      <div class="ios-group">
-        <div class="ios-row">${nb(2)}<span class="ios-ic" style="background:#111">${ic("wallet", 15)}</span><span class="grow">Tocco <b>Hype</b> o <b>Revolut</b></span><span class="ios-val">›</span></div>
-        <div class="ios-row">${nb(3)}<span class="grow">Esegui immediatamente</span>${iosSwitch(true)}</div>
-        <div class="ios-row"><span class="grow">Notifica quando viene eseguito</span>${iosSwitch(false)}</div>
-      </div>
-      <div class="ios-h">Fai</div>
-      <div class="ios-act">${nb(4)}<span class="ios-ic" style="background:#F4B400">${ic("receipt", 14)}</span><span class="grow">Testo<span class="ios-line">${iosTok("Importo", "v")} ; ${iosTok("Esercente", "v")} ; ${iosTok("Carta", "v")}</span></span></div>
-      <div class="ios-act">${nb(5)}<span class="ios-ic" style="background:linear-gradient(135deg,#5A6CFF,#C04CF7)">${ic("bolt", 14)}</span><span class="grow">Esegui ${iosTok("Pagamento Keepo")} con ${iosTok("Testo", "v")}</span></div>
-      <div class="ios-banner"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>Uscita di 4,20 € da Bar Centrale (Hype). Saldo: 1.284,10 €</span><small>ora</small></div>
-    </div>`,
+    render: () => clip("automazione-applepay", "Video: in Comandi Rapidi si aggiunge a Pagamento Keepo l’automazione Wallet"),
     steps: [
       `Aggiungi il comando <b>Pagamento Keepo</b> (in Siri e widget) e avvialo una volta a mano, per salvare il codice.`,
-      `Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b>, scegli <b>Transazione</b> e seleziona le carte (es. Hype e Revolut).`,
-      `Scegli <b>Esegui immediatamente</b>, poi <b>Avanti</b> → <b>Nuova automazione vuota</b>.`,
-      `Aggiungi l'azione <b>Testo</b> e scrivi dentro le variabili che compaiono sopra la tastiera: <b>Importo</b> ; <b>Esercente</b> ; <b>Carta</b>, separate dal punto e virgola.`,
-      `Aggiungi <b>Esegui comando rapido</b>, scegli <b>Pagamento Keepo</b> e come input il <b>Testo</b> del passo 4. Fine.`],
-    note: "Il conto è riconosciuto se il nome della carta contiene il nome del conto in Keepo (es. \"Hype\"). Funziona solo con i pagamenti Apple Pay: gli acquisti online con la carta vanno segnati a mano. Per i soldi che ricevi c'è l'automazione qui sotto." },
+      `In Comandi Rapidi tieni premuto <b>Pagamento Keepo</b> e scegli <b>Modifica</b>.`,
+      `Tocca <b>Cerca</b>, scegli <b>Automazioni</b> e cerca <b>Wallet</b>.`,
+      `Tocca <b>Qualsiasi carta</b> e scegli le tue carte (es. Hype e Revolut), poi la spunta. In Libreria → Automazioni la vedi attiva.`],
+    note: "Su iOS 18 o precedenti si fa da Comandi Rapidi → Automazione → + → Transazione. Il conto è riconosciuto se il nome della carta contiene il nome del conto in Keepo (es. \"Hype\"). Funziona solo con i pagamenti Apple Pay: gli acquisti online con la carta vanno segnati a mano. Per i soldi che ricevi c'è l'automazione qui sotto." },
   { id: "mail", icon: "mail", title: "Entrate dalle email della banca", short: "Quando la banca ti scrive che hai ricevuto soldi, Keepo segna l'entrata sul conto giusto.",
     shortcut: "Accredito Keepo",
-    render: () => `<div class="ios">
-      <div class="ios-nav"><span>‹ Automazione</span><b>Nuova automazione</b><span class="ios-blue">Fine</span></div>
-      <div class="ios-h">Quando</div>
-      <div class="ios-group">
-        <div class="ios-row">${nb(2)}<span class="ios-ic" style="background:#1E88F5">${ic("mail", 15)}</span><span class="grow">Ricevo un'email</span></div>
-        <div class="ios-row">${nb(3)}<span class="grow">Mittente</span><span class="ios-val" id="mailFrom">${esc(mailBank ? (mailBank.addr || "…@" + mailBank.domain) : "avvisi@tuabanca.it")}</span></div>
-        <div class="ios-row"><span class="grow">L'oggetto contiene</span><span class="ios-val">accredito</span></div>
-        <div class="ios-row">${nb(4)}<span class="grow">Esegui immediatamente</span>${iosSwitch(true)}</div>
-      </div>
-      <div class="ios-h">Fai</div>
-      <div class="ios-act">${nb(5)}<span class="ios-ic" style="background:linear-gradient(135deg,#5A6CFF,#C04CF7)">${ic("bolt", 14)}</span><span class="grow">Esegui ${iosTok("Accredito Keepo")} con ${iosTok("Input comando rapido", "v")}</span></div>
-      <div class="ios-banner"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>Entrata di 50,00 € su Hype. Saldo: 1.334,10 €</span><small>ora</small></div>
-    </div>`,
+    render: () => clip("automazione-email", "Video: in Comandi Rapidi si aggiunge ad Accredito Keepo l’automazione Email con il mittente della banca"),
     steps: [
       `Aggiungi il comando <b>Accredito Keepo</b> (in Siri e widget). Se non l'hai mai fatto, avvia prima un altro comando di Keepo per salvare il codice.`,
-      `Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b> e scegli <b>Email</b>.`,
-      `In <b>Mittente</b> metti l'indirizzo della tua banca: sceglila qui sotto e Keepo ti dice quale usare. Se vuoi, in <b>L'oggetto contiene</b> metti la parola dei loro avvisi di accredito.`,
-      `Scegli <b>Esegui immediatamente</b>, poi <b>Avanti</b> → <b>Nuova automazione vuota</b>.`,
-      `Aggiungi <b>Esegui comando rapido</b>, scegli <b>Accredito Keepo</b> e come input <b>Input comando rapido</b> (l'email). Fine. Ripeti per ogni banca.`],
-    note: "Parte solo per le email del mittente che scegli tu: gli altri messaggi non li vede. L'email resta sull'iPhone: a Keepo arrivano solo la frase con l'importo (es. \"bonifico di 50,00 €\") e il nome della banca. Serve che la banca mandi un'email per ogni accredito: di solito si attiva tra le notifiche nell'app della banca. Se un'email arriva due volte, l'entrata viene segnata una volta sola." }
+      `In Comandi Rapidi tieni premuto <b>Accredito Keepo</b> e scegli <b>Modifica</b>.`,
+      `Tocca <b>Cerca</b>, scegli <b>Automazioni</b> e poi <b>Email</b>.`,
+      `Tocca <b>Indirizzo email</b> e scrivi il mittente della tua banca: sceglila qui sotto e Keepo ti dice quale.`,
+      `Conferma con la spunta. In Libreria → Automazioni compare "Quando ricevo un'email da …". Ripeti per ogni banca.`],
+    note: "Su iOS 18 o precedenti si fa da Comandi Rapidi → Automazione → + → Email. Parte solo per le email del mittente che scegli tu: gli altri messaggi non li vede. L'email resta sull'iPhone: a Keepo arrivano solo la frase con l'importo (es. \"bonifico di 50,00 €\") e il nome della banca. Serve che la banca mandi un'email per ogni accredito: di solito si attiva tra le notifiche nell'app della banca. Se un'email arriva due volte, l'entrata viene segnata una volta sola." }
 ];
 function bankOut() {
   const b = mailBank;
@@ -1734,7 +1700,6 @@ function autoSheet(focus) {
         mailBank = BANK_MAIL.find(b => b.name === bb.dataset.bank);
         sh.querySelectorAll("[data-bank]").forEach(x => x.classList.toggle("on", x === bb));
         $("#bankOut").innerHTML = bankOut();
-        $("#mailFrom").textContent = mailBank.addr || "…@" + mailBank.domain;
         return;
       }
       const cp = e.target.closest("[data-copy]");

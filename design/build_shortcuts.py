@@ -6,7 +6,7 @@ TOKEN = os.environ.get("SD_TOKEN", "")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 cfg = open(os.path.join(ROOT, "config.js")).read()
-URL = re.search(r'supabaseUrl:\s*"([^"]+)"', cfg).group(1)
+URL = os.environ.get("SD_URL") or re.search(r'supabaseUrl:\s*"([^"]+)"', cfg).group(1)   # SD_URL: server di prova per i video
 KEY = re.search(r'supabaseAnonKey:\s*"([^"]+)"', cfg).group(1)
 CATS_OUT = ["Spesa", "Casa", "Bollette", "Trasporti", "Svago", "Ristoranti", "Shopping", "Salute", "Altro"]
 CATS_IN = ["Stipendio", "Paghetta", "Regalo", "Vendita", "Lavoretto", "Altro"]
