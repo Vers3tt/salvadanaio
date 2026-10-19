@@ -549,6 +549,25 @@ button.crow{width:100%;text-align:left}
 .notice-acts{display:flex;gap:16px;margin-top:4px}
 .notice-acts .link{font-size:14px;color:var(--ink);font-weight:600}
 .notice-acts .link.muted{color:var(--ink2);font-weight:500}
+.notice.check .ico{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--fill);color:var(--ink)}
+.balance .lbl{display:flex;align-items:center;gap:10px}
+.bal-check{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;color:var(--ink2);padding:3px 8px 3px 6px;border-radius:99px;background:var(--fill)}
+.bal-check:hover{color:var(--ink)}
+.check-list{padding:4px 0}
+.check-row{display:grid;grid-template-columns:minmax(0,1fr) 150px;align-items:center;gap:4px 12px;padding:10px 16px}
+.check-row+.check-row{border-top:1px solid var(--line)}
+.cr-t{display:flex;align-items:center;gap:10px;min-width:0}
+.cr-t>span{display:grid;min-width:0}
+.cr-t small{color:var(--ink2);font-size:13px}
+.cr-in{background:var(--fill);min-height:42px}
+.cr-in input{text-align:right;font-variant-numeric:tabular-nums;padding:9px 0}
+.cr-in .eur{color:var(--ink2)}
+.cr-d{grid-column:1/-1;font-size:13px;color:var(--ink2)}
+.cr-d:empty{display:none}
+.cr-d.pos{color:var(--green)} .cr-d.neg{color:var(--neg)}
+.check-sum{margin:12px 4px 0;font-size:14px;color:var(--ink2)}
+.check-sum b{color:var(--ink)} .check-sum b.pos{color:var(--green)} .check-sum b.neg{color:var(--neg)}
+.cell select{border:0;background:none;font:inherit;color:var(--ink2);text-align:right;text-align-last:right;-webkit-appearance:none;appearance:none;padding:0}
 .demo .keypad{display:grid} .demo .kbhint{display:none}
 .demo-zoom .goal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .demo-zoom *,.demo-zoom *::before,.demo-zoom *::after{animation:none!important;transition:none!important}

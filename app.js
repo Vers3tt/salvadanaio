@@ -126,11 +126,12 @@ function mascotLines() {
   const now = new Date(), today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   const p0 = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(), pSame = p0 + (now - m0);
-  const real = D.txs.filter(t => !isTransfer(t));
+  const real = D.txs.filter(t => !isNeutral(t));
   const monthLabel = now.toLocaleDateString("it-IT", { month: "long" });
   const prevLabel = new Date(p0).toLocaleDateString("it-IT", { month: "long" });
 
   if (!D.txs.length) { add(100, "Ciao, sono Keepo! Tocca Entrata e segna i soldi che hai adesso: da lì partiamo."); return L; }
+  if (checkDue()) add(85, "Controlliamo il saldo? Se in tasca o sul conto hai una cifra diversa da quella che vedo io, la sistemiamo in un attimo: tocca Allinea.");
 
   // budget
   const budgets = S.settings.budgets || {};
@@ -218,9 +219,12 @@ const CATS = {
 };
 const TRANSFER = "Trasferimento";
 const isTransfer = t => t.cat === TRANSFER;
+const ADJUST = "Allineamento";   // corrections from "Allinea il saldo": they fix the balance but are not income or spending
+const isNeutral = t => t.cat === TRANSFER || t.cat === ADJUST;
 function catInfo(type, name) {
   if (name === "Obiettivo") return ["Obiettivo", "flag"];
   if (name === TRANSFER) return [TRANSFER, "transfer"];
+  if (name === ADJUST) return [ADJUST, "sync"];
   return CATS[type].find(c => c[0] === name) || [type === "in" ? "Entrata" : "Uscita", type === "in" ? "arrowIn" : "arrowOut"];
 }
 
@@ -374,7 +378,7 @@ function derive() {
   const done = goals.filter(g => g.done).sort((a, b) => (b.done_at || 0) - (a.done_at || 0));
   const now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   let mIn = 0, mOut = 0;
-  for (const t of txs) { if (t.ts < m0) break; if (isTransfer(t)) continue; t.type === "in" ? mIn += t.amount : mOut += t.amount; }
+  for (const t of txs) { if (t.ts < m0) break; if (isNeutral(t)) continue; t.type === "in" ? mIn += t.amount : mOut += t.amount; }
   const since = Date.now() - 90 * DAY;
   const first = txs.length ? txs[txs.length - 1].ts : Date.now();
   const span = Math.max(30, Math.min(90, (Date.now() - first) / DAY));
@@ -450,9 +454,10 @@ function homeScreen() {
   <header class="nav brandnav"><div><small>${esc(dateTitle())}</small><h1>Keepo</h1></div>${mascot()}</header>
   <div id="syncBadge"></div>
   ${iconNotice()}
+  ${checkNotice()}
   <div class="home-grid"><div class="col-a">
   <section class="card balance">
-    <div class="bal-top"><span class="lbl">Saldo</span>
+    <div class="bal-top"><span class="lbl">Saldo<button class="bal-check" data-check aria-label="Allinea il saldo con quello che hai davvero">${ic("sync", 13)}Allinea</button></span>
       <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
     <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
     ${balanceDelta()}
@@ -564,7 +569,7 @@ function monthStats() {
       in: 0, out: 0, cats: {} });
   }
   for (const t of D.txs) {
-    if (isTransfer(t)) continue;
+    if (isNeutral(t)) continue;
     const m = out.find(m => t.ts >= m.start && t.ts < m.end); if (!m) continue;
     if (t.type === "in") m.in += t.amount;
     else { m.out += t.amount; const c = catInfo("out", t.cat)[0]; m.cats[c] = (m.cats[c] || 0) + t.amount; }
@@ -722,6 +727,7 @@ function moreScreen() {
   <div class="group-h"><span>Pianificazione</span></div>
   <div class="list">
     <button class="cell btn" data-more="wage"><span>Quanto ti costa davvero</span><span>${S.settings.hourly ? esc(money(S.settings.hourly)) + "/ora" : "Imposta"}</span></button>
+    <button class="cell btn" data-check><span>Allinea il saldo</span><span>${esc(CHECK_EVERY.find(c => c[0] === checkEvery())[1])}</span></button>
     <button class="cell btn" data-more="accounts"><span>Conti</span><span>${accounts().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
@@ -949,7 +955,7 @@ function txSheet(type, existing) {
     </div>
     <div class="keypad" id="keypad">${["1","2","3","4","5","6","7","8","9",",","0","⌫"].map(k => `<button type="button" data-k="${k}" aria-label="${k === "⌫" ? "Cancella" : k}">${k}</button>`).join("")}</div>
     <button class="save" id="txSave">Salva</button>
-    ${existing && accounts().length && !isTransfer(existing) ? `<button class="save ghost" id="txSplit">${ic("transfer", 18)}Dividi tra più conti</button>` : ""}
+    ${existing && accounts().length && !isNeutral(existing) ? `<button class="save ghost" id="txSplit">${ic("transfer", 18)}Dividi tra più conti</button>` : ""}
     ${existing ? `<button class="save danger" id="txDel">Elimina movimento</button>` : ""}
   `, (sh, close) => {
     const draw = () => {
@@ -1732,6 +1738,72 @@ function transferSheet() {
   });
 }
 
+/* ============ allinea il saldo ============ */
+// Keepo's balance drifts from real life (a forgotten coffee, coins found in a pocket). Here you type
+// what you really have and the difference is booked as an "Allineamento" movement on that account.
+const CHECK_EVERY = [[0, "Mai"], [7, "Ogni settimana"], [14, "Ogni 2 settimane"], [30, "Ogni mese"]];
+const checkEvery = () => S.settings.checkEvery ?? 14;
+function checkDue() {
+  const every = checkEvery(); if (!every || DEMO) return false;
+  const txs = Object.values(S.tx); if (!txs.length) return false;
+  const since = S.settings.checkedAt || Math.min(...txs.map(t => t.ts));
+  return Date.now() - since > every * DAY && Date.now() > (S.settings.checkSnooze || 0);
+}
+function checkNotice() {
+  if (!checkDue()) return "";
+  const days = Math.round((Date.now() - (S.settings.checkedAt || Math.min(...Object.values(S.tx).map(t => t.ts)))) / DAY);
+  return `<div class="card notice check"><span class="ico">${ic("sync", 22)}</span>
+    <div><b>I conti tornano?</b><span>${S.settings.checkedAt ? `L'ultimo controllo è di ${days} giorni fa.` : "Non hai ancora controllato il saldo."} Guarda quanto hai davvero, in tasca e sui conti, e allinea Keepo in un attimo.</span>
+    <div class="notice-acts"><button class="link" data-check>Controlla adesso</button><button class="link muted" data-check-later>Più tardi</button></div></div></div>`;
+}
+const parseReal = s => {   // like parseAmt, but 0 and negative balances are allowed; blank = unchanged
+  s = String(s || "").trim().replace(/\s|€/g, ""); if (!s || s === "-") return null;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = Number(s); return isFinite(n) ? Math.round(n * 100) : null;
+};
+function checkSheet() {
+  const accs = accounts(), { b, none } = accountBalances();
+  const rows = accs.length ? [...accs.map(a => ({ id: a.id, name: a.name, color: a.color, app: b[a.id] || 0 })),
+    ...(none ? [{ id: "", name: "Senza conto", color: "var(--ink3)", app: none }] : [])]
+    : [{ id: "", name: "Totale", app: D.total }];
+  const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + money(Math.abs(v));
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Allinea il saldo</h3><button class="r" id="cGo">Salva</button></div>
+    <p class="hint" style="margin:0 4px 14px">Scrivi quanto hai davvero${accs.length ? " su ogni conto: lo vedi nell'app della banca o contando i contanti." : ": sul conto e in tasca, tutto insieme."} Se è diverso, Keepo segna la differenza come <b>Allineamento</b>: il saldo torna giusto e le entrate e uscite del mese non cambiano.</p>
+    <div class="list check-list">${rows.map((r, i) => `<div class="check-row">
+      <div class="cr-t">${r.color ? `<i class="adot lg" style="background:${r.color}"></i>` : ""}<span><b>${esc(r.name)}</b><small>In Keepo: <span class="num">${money(r.app)}</span></small></span></div>
+      <div class="field cr-in"><input data-ci="${i}" inputmode="decimal" placeholder="${esc((r.app / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}" aria-label="Quanto hai davvero su ${esc(r.name)}"><span class="eur">€</span></div>
+      <small class="cr-d" id="cd${i}"></small></div>`).join("")}</div>
+    <p class="check-sum" id="cSum">Lascia vuoto quello che è già giusto.</p>
+    <div class="group-h" style="margin-top:18px"><span>Ricordamelo</span></div>
+    <div class="list"><label class="cell"><span>Chiedimelo</span><select id="cEvery">${CHECK_EVERY.map(([d, l]) => `<option value="${d}"${d === checkEvery() ? " selected" : ""}>${l}</option>`).join("")}</select></label></div>
+    <p class="foot">${S.settings.checkedAt ? `Ultimo controllo: ${esc(new Date(S.settings.checkedAt).toLocaleDateString("it-IT", { day: "numeric", month: "long" }))}.` : "Ti chiedo di controllare ogni tanto, così il saldo resta vero."}</p>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    const diffs = () => rows.map((r, i) => { const v = parseReal(sh.querySelector(`[data-ci="${i}"]`).value); return v == null ? 0 : v - r.app; });
+    const draw = () => {
+      const d = diffs(); let tot = 0;
+      d.forEach((v, i) => { tot += v; const el = $("#cd" + i); el.textContent = v ? `Hai ${money(Math.abs(v))} ${v > 0 ? "in più" : "in meno"} di quanto pensava Keepo` : ""; el.className = "cr-d" + (v > 0 ? " pos" : v < 0 ? " neg" : ""); });
+      $("#cSum").innerHTML = d.some(v => v) ? `Differenza totale: <b class="num${tot < 0 ? " neg" : tot > 0 ? " pos" : ""}">${signed(tot)}</b> · nuovo saldo <b class="num">${money(D.total + tot)}</b>` : "Lascia vuoto quello che è già giusto.";
+    };
+    sh.addEventListener("input", e => { if (e.target.matches("[data-ci]")) draw(); });
+    setTimeout(() => sh.querySelector("[data-ci]")?.focus(), 250);
+    $("#cGo").onclick = () => {
+      const d = diffs(), ts = Date.now(), made = [];
+      d.forEach((v, i) => {
+        if (!v) return;
+        const t = { id: uuid(), type: v > 0 ? "in" : "out", amount: Math.abs(v), cat: ADJUST, note: "Saldo allineato" + (rows[i].id ? " · " + rows[i].name : ""), ts, account: rows[i].id || null };
+        S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); made.push(t);
+      });
+      const every = +$("#cEvery").value;
+      S.settings = { ...S.settings, checkEvery: every, checkedAt: ts, checkSnooze: 0 };
+      enqueue({ op: "up", t: "settings", row: { data: S.settings } });
+      close(); commit();
+      const tot = made.reduce((a, t) => a + (t.type === "in" ? t.amount : -t.amount), 0);
+      if (made.length) { toast(`Saldo allineato: ${signed(tot)}`, () => made.forEach(t => delTx(t.id))); mascotReact("jump"); }
+      else toast("Perfetto, i conti tornano");
+    };
+  });
+}
+
 /* ============ prezzi dai link ============ */
 // product page titles: decode HTML entities and drop shop names ("Amazon.it: …", "… | IKEA")
 function cleanTitle(t) {
@@ -2001,6 +2073,8 @@ document.addEventListener("click", e => {
     if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
     const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
   }
+  if (e.target.closest("[data-check]") && !e.target.closest(".sheet")) { checkSheet(); return; }
+  if (e.target.closest("[data-check-later]")) { saveSettings({ checkSnooze: Date.now() + 2 * DAY }); return; }
   if (e.target.closest("[data-icon-steps]")) { iconSteps = true; render(); return; }
   if (e.target.closest("[data-icon-ok]")) { try { localStorage.setItem(LS + ".iconv", String(ICON_VERSION)); } catch {} render(); return; }
   const it = e.target.closest("[data-interest]");
