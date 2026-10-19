@@ -1,4 +1,4 @@
-"""Genera i Comandi Rapidi di Keepo (Uscita, Entrata, Saldo) e li firma con `shortcuts sign`.
+"""Genera i Comandi Rapidi di Keepo (Uscita, Entrata, Saldo, Pagamento, Accredito) e li firma con `shortcuts sign`.
 Uso: python3 design/build_shortcuts.py                      -> comandi/*.shortcut (chiedono il codice all'import)
      SD_TOKEN=sd_... SD_OUT=/cartella python3 design/...     -> comandi personali con il codice già dentro"""
 import plistlib, uuid, subprocess, os, re, tempfile
@@ -101,6 +101,26 @@ def payment():
             act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFGetDictionaryValueType": "Value", "WFDictionaryKey": "messaggio"}),
             act("is.workflow.actions.notification", {"WFNotificationActionTitle": "Keepo", "WFNotificationActionBody": var_text(vid, "Dictionary Value"), "WFNotificationActionSound": False})]
 
+# importo vicino a una parola da accredito: "hai ricevuto un bonifico di 50,00 €", "accredito di € 1.250,00"
+INCOME_RE = r"(accredit|ricevut|bonific|ricaric|rimbors|storn|stipendi|entrat|versament)[^0-9€\n]{0,60}(€\s?)?[0-9]{1,3}([.\s][0-9]{3})*(,[0-9]{1,2})?"
+BANKS_RE = r"hype|revolut|n26|satispay|paypal|postepay|bancoposta|poste|intesa|isybank|unicredit|buddybank|bper|bnl|mediolanum|fineco|widiba|credem|illimity|webank|chebanca|ing|bunq|wise|tinaba|sella|mps|monte dei paschi|credit agricole|crédit agricole|banco bpm|bpm"
+
+def income_from_email():
+    """Per l'automazione "Quando ricevo un'email": legge l'email SUL TELEFONO e manda a Keepo solo
+    la frase con l'importo e il nome della banca, poi mostra una notifica."""
+    tid, m1, m2, rid, vid = U(), U(), U(), U(), U()
+    code_acts, code = token_action()
+    shortcut_input = {"Value": {"string": "\uFFFC", "attachmentsByRange": {"{0, 1}": {"Type": "ExtensionInput"}}}, "WFSerializationType": "WFTextTokenString"}
+    raw = {"Value": {"string": "\uFFFC;\uFFFC", "attachmentsByRange": {
+              "{0, 1}": {"OutputUUID": m1, "Type": "ActionOutput", "OutputName": "Matches"},
+              "{2, 1}": {"OutputUUID": m2, "Type": "ActionOutput", "OutputName": "Matches"}}}, "WFSerializationType": "WFTextTokenString"}
+    return [act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": shortcut_input}),
+            act("is.workflow.actions.text.match", {"UUID": m1, "WFMatchTextPattern": INCOME_RE, "WFMatchTextCaseSensitive": False, "text": var_text(tid, "Text")}),
+            act("is.workflow.actions.text.match", {"UUID": m2, "WFMatchTextPattern": BANKS_RE, "WFMatchTextCaseSensitive": False, "text": var_text(tid, "Text")}),
+            *code_acts, request(rid, "quick_income", [("p_token", code), ("p_raw", raw)]),
+            act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFGetDictionaryValueType": "Value", "WFDictionaryKey": "messaggio"}),
+            act("is.workflow.actions.notification", {"WFNotificationActionTitle": "Keepo", "WFNotificationActionBody": var_text(vid, "Dictionary Value"), "WFNotificationActionSound": False})]
+
 def balance():
     tid, rid = U(), U()
     code_acts, code = token_action()
@@ -111,7 +131,7 @@ def workflow(actions, glyph, color, takes_input=False):
         "WFWorkflowClientVersion": "2605.0.5", "WFWorkflowMinimumClientVersion": 900, "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": color, "WFWorkflowIconGlyphNumber": glyph},
         "WFWorkflowImportQuestions": [],
-        "WFWorkflowTypes": ["NCWidget", "WatchKit"] if not takes_input else [], "WFWorkflowInputContentItemClasses": ["WFStringContentItem", "WFGenericFileContentItem"] if takes_input else [],
+        "WFWorkflowTypes": ["NCWidget", "WatchKit"] if not takes_input else [], "WFWorkflowInputContentItemClasses": ["WFStringContentItem", "WFRichTextContentItem", "WFEmailAddressContentItem", "WFGenericFileContentItem"] if takes_input else [],
         "WFWorkflowHasShortcutInputVariables": takes_input, "WFWorkflowHasOutputFallback": False,
         "WFQuickActionSurfaces": [], "WFWorkflowOutputContentItemClasses": [],
         "WFWorkflowActions": actions}
@@ -121,11 +141,12 @@ BRAND = os.environ.get("SD_BRAND", "Keepo")
 SPECS = [(f"Uscita {BRAND}", movement("out"), 59511, 463140863),
          (f"Entrata {BRAND}", movement("in"), 59511, 431817727),
          (f"Saldo {BRAND}", balance(), 59446, 4282601983),
-         (f"Pagamento {BRAND}", payment(), 59446, 463140863)]
+         (f"Pagamento {BRAND}", payment(), 59446, 463140863),
+         (f"Accredito {BRAND}", income_from_email(), 59511, 431817727)]
 out = os.environ.get("SD_OUT") or os.path.join(ROOT, "comandi"); os.makedirs(out, exist_ok=True)
 for name, actions, glyph, color in SPECS:
     with tempfile.NamedTemporaryFile(suffix=".shortcut", delete=False) as f:
-        plistlib.dump(workflow(actions, glyph, color, takes_input=name.startswith("Pagamento")), f, fmt=plistlib.FMT_BINARY); raw = f.name
+        plistlib.dump(workflow(actions, glyph, color, takes_input=name.startswith(("Pagamento", "Accredito"))), f, fmt=plistlib.FMT_BINARY); raw = f.name
     dest = os.path.join(out, name + ".shortcut")
     r = subprocess.run(["shortcuts", "sign", "--mode", "anyone", "--input", raw, "--output", dest], capture_output=True, text=True)
     print(name, "->", "ok" if r.returncode == 0 and os.path.exists(dest) else ("ERRORE " + r.stderr.strip()))

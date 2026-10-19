@@ -49,6 +49,7 @@ const P = {
   receipt: '<path d="M5.5 2.5v19l2.2-1.4 2.1 1.4 2.2-1.4 2.2 1.4 2.1-1.4 2.2 1.4v-19l-2.2 1.4-2.1-1.4-2.2 1.4-2.2-1.4-2.1 1.4z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
   sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4.5 7 7.5 6 7.5-6"/>',
   layout: '<rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/>',
   grip: '<circle cx="9" cy="6" r="1.1" fill="currentColor"/><circle cx="15" cy="6" r="1.1" fill="currentColor"/><circle cx="9" cy="12" r="1.1" fill="currentColor"/><circle cx="15" cy="12" r="1.1" fill="currentColor"/><circle cx="9" cy="18" r="1.1" fill="currentColor"/><circle cx="15" cy="18" r="1.1" fill="currentColor"/>',
   eye: '<path d="M2.5 12C3.5 9.3 7 5 12 5s8.5 4.3 9.5 7c-1 2.7-4.5 7-9.5 7s-8.5-4.3-9.5-7z"/><circle cx="12" cy="12" r="3"/>',
@@ -729,7 +730,8 @@ function moreScreen() {
       <button class="cell btn" data-more="setup"><span>Accedi per salvare i dati online</span></button>`}
   </div>
   ${cloud ? `<div class="group-h"><span>Veloce</span></div>
-  <div class="list"><button class="cell btn" data-more="siri"><span>Siri, widget e Comandi Rapidi</span><span>${ic("chevR", 16)}</span></button></div>` : ""}
+  <div class="list"><button class="cell btn" data-more="siri"><span>Siri, widget e Comandi Rapidi</span><span>${ic("chevR", 16)}</span></button>
+    <button class="cell btn" data-more="auto"><span>Automazioni</span><span class="cell-sub">Apple Pay, email della banca ${ic("chevR", 16)}</span></button></div>` : ""}
   <div class="group-h"><span>Pianificazione</span></div>
   <div class="list">
     <button class="cell btn" data-more="wage"><span>Quanto ti costa davvero</span><span>${S.settings.hourly ? esc(money(S.settings.hourly)) + "/ora" : "Imposta"}</span></button>
@@ -1554,7 +1556,8 @@ const ROADMAP = [
 const SHORTCUTS = [["Uscita Keepo", "Chiede importo e categoria e segna una spesa", "minus"],
                    ["Entrata Keepo", "Chiede importo e categoria e segna un'entrata", "plus"],
                    ["Saldo Keepo", "Ti dice il saldo e il riepilogo del mese", "receipt"],
-                   ["Pagamento Keepo", "Per l'automazione Apple Pay: segna da solo ogni pagamento", "wallet"]];
+                   ["Pagamento Keepo", "Per l'automazione Apple Pay: segna da solo ogni pagamento", "wallet"],
+                   ["Accredito Keepo", "Per l'automazione email: segna i soldi che ricevi", "mail"]];
 async function sha256hex(t) {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -1581,17 +1584,10 @@ function siriSheet() {
       <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Keepo.</p>
     </div>
 
-    <div class="group-h"><span>4 · Pagamenti Apple Pay in automatico</span></div>
-    <div class="card howto">
-      <p>Ogni volta che paghi con Apple Pay (carta Hype, Revolut…) Keepo segna l'uscita da solo, sul conto giusto, con il nome del negozio.</p>
-      <p><b>1.</b> Aggiungi il comando <b>Pagamento Keepo</b> qui sopra e avvialo una volta a mano, per salvare il codice.</p>
-      <p><b>2.</b> Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b> e scegli <b>Transazione</b>.</p>
-      <p><b>3.</b> Seleziona le carte (es. Hype e Revolut), scegli <b>Esegui immediatamente</b> e tocca <b>Avanti</b> → <b>Nuova automazione vuota</b>.</p>
-      <p><b>4.</b> Aggiungi l'azione <b>Testo</b> e scrivi dentro, usando le variabili che compaiono sopra la tastiera: <b>Importo</b> ; <b>Esercente</b> ; <b>Carta</b> (separati da punto e virgola).</p>
-      <p><b>5.</b> Aggiungi l'azione <b>Esegui comando rapido</b>, scegli <b>Pagamento Keepo</b> e come input il <b>Testo</b> del passo 4. Fine.</p>
-      <p class="pnote">Il conto viene riconosciuto se il nome della carta contiene il nome del conto in Keepo (es. "Hype"). Bonifici e pagamenti online senza Apple Pay vanno segnati a mano.</p>
-    </div>`, (sh, close) => {
+    <div class="group-h"><span>4 · In automatico</span></div>
+    <button class="card auto-link" data-auto>${ic("bolt", 20)}<span><b>Automazioni</b><small>Uscite con Apple Pay ed entrate dalle email della banca, senza toccare niente</small></span>${ic("chevR", 16)}</button>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
+    sh.querySelector("[data-auto]").onclick = () => autoSheet();
     $("#qGen").onclick = async () => {
       $("#qGen").disabled = true;
       const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -1612,6 +1608,74 @@ function siriSheet() {
       };
       $("#qNew").onclick = () => { close(); siriSheet(); setTimeout(() => $("#qGen")?.click(), 350); };
     };
+  });
+}
+
+/* ============ automazioni ============ */
+// Each automation is explained with a drawing of the iPhone screen it is built on (Comandi Rapidi,
+// in the style of Apple's Settings) whose numbered badges match the steps underneath.
+const iosSwitch = on => `<i class="ios-sw${on ? " on" : ""}"></i>`;
+const iosTok = (t, kind = "") => `<span class="ios-tok ${kind}">${esc(t)}</span>`;
+const nb = n => `<span class="nb">${n}</span>`;
+const AUTOMATIONS = [
+  { id: "pay", icon: "wallet", title: "Uscite con Apple Pay", short: "Paghi con l'iPhone o l'Apple Watch e Keepo segna la spesa, sul conto della carta e con il nome del negozio.",
+    shortcut: "Pagamento Keepo",
+    render: () => `<div class="ios">
+      <div class="ios-nav"><span>‹ Automazione</span><b>Nuova automazione</b><span class="ios-blue">Fine</span></div>
+      <div class="ios-h">Quando</div>
+      <div class="ios-group">
+        <div class="ios-row">${nb(2)}<span class="ios-ic" style="background:#111">${ic("wallet", 15)}</span><span class="grow">Tocco <b>Hype</b> o <b>Revolut</b></span><span class="ios-val">›</span></div>
+        <div class="ios-row">${nb(3)}<span class="grow">Esegui immediatamente</span>${iosSwitch(true)}</div>
+        <div class="ios-row"><span class="grow">Notifica quando viene eseguito</span>${iosSwitch(false)}</div>
+      </div>
+      <div class="ios-h">Fai</div>
+      <div class="ios-act">${nb(4)}<span class="ios-ic" style="background:#F4B400">${ic("receipt", 14)}</span><span class="grow">Testo<span class="ios-line">${iosTok("Importo", "v")} ; ${iosTok("Esercente", "v")} ; ${iosTok("Carta", "v")}</span></span></div>
+      <div class="ios-act">${nb(5)}<span class="ios-ic" style="background:linear-gradient(135deg,#5A6CFF,#C04CF7)">${ic("bolt", 14)}</span><span class="grow">Esegui ${iosTok("Pagamento Keepo")} con ${iosTok("Testo", "v")}</span></div>
+      <div class="ios-banner"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>Uscita di 4,20 € da Bar Centrale (Hype). Saldo: 1.284,10 €</span><small>ora</small></div>
+    </div>`,
+    steps: [
+      `Aggiungi il comando <b>Pagamento Keepo</b> (in Siri e widget) e avvialo una volta a mano, per salvare il codice.`,
+      `Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b>, scegli <b>Transazione</b> e seleziona le carte (es. Hype e Revolut).`,
+      `Scegli <b>Esegui immediatamente</b>, poi <b>Avanti</b> → <b>Nuova automazione vuota</b>.`,
+      `Aggiungi l'azione <b>Testo</b> e scrivi dentro le variabili che compaiono sopra la tastiera: <b>Importo</b> ; <b>Esercente</b> ; <b>Carta</b>, separate dal punto e virgola.`,
+      `Aggiungi <b>Esegui comando rapido</b>, scegli <b>Pagamento Keepo</b> e come input il <b>Testo</b> del passo 4. Fine.`],
+    note: "Il conto è riconosciuto se il nome della carta contiene il nome del conto in Keepo (es. \"Hype\"). Funziona solo con i pagamenti Apple Pay: gli acquisti online con la carta vanno segnati a mano. Per i soldi che ricevi c'è l'automazione qui sotto." },
+  { id: "mail", icon: "mail", title: "Entrate dalle email della banca", short: "Quando la banca ti scrive che hai ricevuto soldi, Keepo segna l'entrata sul conto giusto.",
+    shortcut: "Accredito Keepo",
+    render: () => `<div class="ios">
+      <div class="ios-nav"><span>‹ Automazione</span><b>Nuova automazione</b><span class="ios-blue">Fine</span></div>
+      <div class="ios-h">Quando</div>
+      <div class="ios-group">
+        <div class="ios-row">${nb(2)}<span class="ios-ic" style="background:#1E88F5">${ic("mail", 15)}</span><span class="grow">Ricevo un'email</span></div>
+        <div class="ios-row">${nb(3)}<span class="grow">Mittente</span><span class="ios-val">avvisi@tuabanca.it</span></div>
+        <div class="ios-row"><span class="grow">L'oggetto contiene</span><span class="ios-val">accredito</span></div>
+        <div class="ios-row">${nb(4)}<span class="grow">Esegui immediatamente</span>${iosSwitch(true)}</div>
+      </div>
+      <div class="ios-h">Fai</div>
+      <div class="ios-act">${nb(5)}<span class="ios-ic" style="background:linear-gradient(135deg,#5A6CFF,#C04CF7)">${ic("bolt", 14)}</span><span class="grow">Esegui ${iosTok("Accredito Keepo")} con ${iosTok("Input comando rapido", "v")}</span></div>
+      <div class="ios-banner"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>Entrata di 50,00 € su Hype. Saldo: 1.334,10 €</span><small>ora</small></div>
+    </div>`,
+    steps: [
+      `Aggiungi il comando <b>Accredito Keepo</b> (in Siri e widget). Se non l'hai mai fatto, avvia prima un altro comando di Keepo per salvare il codice.`,
+      `Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b> e scegli <b>Email</b>.`,
+      `In <b>Mittente</b> scrivi l'indirizzo da cui la banca ti manda gli avvisi (aprine uno in Mail e tocca il mittente per vederlo). Se vuoi, in <b>L'oggetto contiene</b> metti la parola dei loro avvisi di accredito.`,
+      `Scegli <b>Esegui immediatamente</b>, poi <b>Avanti</b> → <b>Nuova automazione vuota</b>.`,
+      `Aggiungi <b>Esegui comando rapido</b>, scegli <b>Accredito Keepo</b> e come input <b>Input comando rapido</b> (l'email). Fine. Ripeti per ogni banca.`],
+    note: "Parte solo per le email del mittente che scegli tu: gli altri messaggi non li vede. L'email resta sull'iPhone: a Keepo arrivano solo la frase con l'importo (es. \"bonifico di 50,00 €\") e il nome della banca. Serve che la banca mandi un'email per ogni accredito: di solito si attiva tra le notifiche nell'app della banca. Se un'email arriva due volte, l'entrata viene segnata una volta sola." }
+];
+function autoSheet() {
+  sheet(`<div class="sheet-h"><button class="l" data-back>‹ Siri</button><h3>Automazioni</h3><button class="r" data-x>Fine</button></div>
+    <p class="hint" style="margin:0 4px 16px">Le automazioni sono regole di Comandi Rapidi sull'iPhone: quando succede una cosa (paghi, ti arriva un'email della banca), avviano un comando di Keepo da sole. Si preparano una volta, poi non devi più fare niente.</p>
+    ${AUTOMATIONS.map(a => `<section class="auto" id="auto-${a.id}">
+      <div class="auto-h"><span class="ico">${ic(a.icon, 20)}</span><span><b>${esc(a.title)}</b><small>${esc(a.short)}</small></span></div>
+      ${a.render()}
+      <ol class="auto-steps">${a.steps.map(t => `<li><span>${t}</span></li>`).join("")}</ol>
+      <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(a.shortcut)}.shortcut" download="${esc(a.shortcut)}.shortcut">${ic("external", 17)}Scarica ${esc(a.shortcut)}</a>
+      <p class="pnote">${esc(a.note)}</p>
+    </section>`).join("")}
+    <p class="foot">I comandi usano il tuo codice personale: se non l'hai ancora generato, torna in Siri e widget.</p>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    sh.querySelector("[data-back]").onclick = () => siriSheet();
   });
 }
 
@@ -2283,6 +2347,7 @@ document.addEventListener("click", e => {
     else if (a === "password") passwordSheet(false);
     else if (a === "delete") deleteAccountSheet();
     else if (a === "siri") siriSheet();
+    else if (a === "auto") autoSheet();
     else if (a === "accounts") accountsSheet();
     else if (a === "wage") wageSheet();
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }

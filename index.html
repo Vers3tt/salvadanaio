@@ -419,6 +419,48 @@ button.crow{width:100%;text-align:left}
   .hl-done-float{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 84px);z-index:30;box-shadow:0 10px 30px rgba(17,28,56,.25)}
 }
 @media (min-width:900px){.hl-done-float{display:none}}
+/* ===== automazioni: disegno della schermata di Comandi Rapidi, stile Impostazioni Apple ===== */
+.cell-sub{display:inline-flex;align-items:center;gap:6px;color:var(--ink2);font-size:14px}
+.auto-link{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 16px}
+.auto-link>span{display:grid;flex:1;min-width:0}.auto-link small{color:var(--ink2);font-size:13px}
+.auto{margin-bottom:30px}
+.auto .pnote{margin:12px 4px 0;line-height:1.45}
+.auto-h{display:flex;gap:12px;align-items:flex-start;margin:0 4px 12px}
+.auto-h .ico{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--fill);color:var(--ink)}
+.auto-h>span:last-child{display:grid;gap:2px}.auto-h b{font-size:16px}.auto-h small{color:var(--ink2);font-size:13.5px;line-height:1.4}
+.ios{--ib:#F2F2F7;--ig:#FFFFFF;--it:#000;--it2:#8A8A8E;--isep:rgba(60,60,67,.18);--iblue:#007AFF;
+  background:var(--ib);border-radius:22px;padding:12px 14px 16px 20px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color:var(--it);font-size:14.5px;
+  box-shadow:0 0 0 1px var(--line);user-select:none;-webkit-user-select:none}
+.ios-nav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;font-size:13.5px;margin:2px 0 10px}
+.ios-nav>span{white-space:nowrap}.ios-nav>span:first-child{color:var(--iblue)}.ios-nav b{font-weight:600}.ios-nav>span:last-child{text-align:right;font-weight:600}
+.ios-blue{color:var(--iblue)}
+.ios-h{font-size:12px;text-transform:uppercase;letter-spacing:.02em;color:var(--it2);margin:12px 14px 6px}
+.ios-group{background:var(--ig);border-radius:12px;overflow:visible}
+.ios-row{position:relative;display:flex;align-items:center;gap:10px;min-height:42px;padding:0 14px}
+.ios-row+.ios-row::before{content:"";position:absolute;top:0;left:14px;right:0;border-top:.5px solid var(--isep)}
+.ios-row .grow,.ios-act .grow{flex:1;min-width:0}
+.ios-val{color:var(--it2);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
+.ios-ic{flex:none;width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff}
+.ios-sw{flex:none;width:44px;height:27px;border-radius:99px;background:#E3E3E8;position:relative}
+.ios-sw::after{content:"";position:absolute;top:2px;left:2px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.18)}
+.ios-sw.on{background:#34C759}.ios-sw.on::after{left:19px}
+.ios-act{position:relative;display:flex;align-items:flex-start;gap:10px;background:var(--ig);border-radius:12px;padding:11px 14px;margin-top:8px;line-height:1.9}
+.ios-act .ios-ic{margin-top:2px}
+.ios-line{display:block;color:var(--it2)}
+.ios-tok{display:inline-block;padding:0 7px;border-radius:7px;background:rgba(0,122,255,.12);color:var(--iblue);font-weight:500;line-height:1.6}
+.ios-tok.v{background:#E9E9EE;color:var(--it)}
+.ios-banner{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.75);backdrop-filter:blur(10px);box-shadow:0 4px 18px rgba(0,0,0,.08)}
+.ios-banner img{border-radius:7px}.ios-banner>span{display:grid;flex:1;min-width:0;font-size:13px;line-height:1.35}.ios-banner b{font-size:13.5px}.ios-banner small{align-self:flex-start;color:var(--it2);font-size:12px}
+.nb{position:absolute;left:-15px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--on-ink);font:600 11.5px/20px var(--font,system-ui);text-align:center;box-shadow:0 0 0 2px var(--ib)}
+.ios-act .nb{top:22px}
+.auto-steps{margin:16px 4px 0;padding:0;list-style:none;counter-reset:st;display:grid;gap:10px;font-size:14.5px;line-height:1.45}
+.auto-steps li{counter-increment:st;display:grid;grid-template-columns:22px 1fr;gap:10px}
+.auto-steps li::before{content:counter(st);width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--on-ink);font-size:12px;font-weight:600;display:grid;place-items:center;margin-top:1px}
+.auto-dl{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;text-decoration:none}
+:root[data-theme="dark"] .ios{--ib:#000;--ig:#1C1C1E;--it:#fff;--it2:#8D8D93;--isep:rgba(84,84,88,.6);--iblue:#0A84FF}
+:root[data-theme="dark"] .ios-sw{background:#39393D}:root[data-theme="dark"] .ios-tok.v{background:#2C2C2E}:root[data-theme="dark"] .ios-banner{background:rgba(44,44,46,.85)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ios{--ib:#000;--ig:#1C1C1E;--it:#fff;--it2:#8D8D93;--isep:rgba(84,84,88,.6);--iblue:#0A84FF}
+  :root:not([data-theme="light"]) .ios-sw{background:#39393D}:root:not([data-theme="light"]) .ios-tok.v{background:#2C2C2E}:root:not([data-theme="light"]) .ios-banner{background:rgba(44,44,46,.85)}}
 .hl-hidden{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
 .hl-hidden>span{color:var(--ink2);font-size:13px;margin-right:2px}
 .editing .w{outline:1.5px dashed var(--ink3);outline-offset:6px;cursor:grab;touch-action:pan-y}
