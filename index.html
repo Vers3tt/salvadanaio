@@ -461,6 +461,36 @@ button.crow{width:100%;text-align:left}
 :root[data-theme="dark"] .ios-sw{background:#39393D}:root[data-theme="dark"] .ios-tok.v{background:#2C2C2E}:root[data-theme="dark"] .ios-banner{background:rgba(44,44,46,.85)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ios{--ib:#000;--ig:#1C1C1E;--it:#fff;--it2:#8D8D93;--isep:rgba(84,84,88,.6);--iblue:#0A84FF}
   :root:not([data-theme="light"]) .ios-sw{background:#39393D}:root:not([data-theme="light"]) .ios-tok.v{background:#2C2C2E}:root:not([data-theme="light"]) .ios-banner{background:rgba(44,44,46,.85)}}
+/* ===== come appaiono i comandi ===== */
+.cmd{margin-bottom:26px}
+.cmd-ios{padding:14px}
+.ios-say{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--it2);margin:0 0 10px 2px}
+.ios-seq{display:grid;grid-template-columns:repeat(3,minmax(190px,1fr));gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -14px;padding:0 14px 2px}
+.ios-seq::-webkit-scrollbar{display:none}
+.ios-seq.one{grid-template-columns:minmax(0,1fr)}
+.ios-scr{scroll-snap-align:start;display:grid;align-content:start;gap:8px}
+.ios-cap{font-size:11.5px;font-weight:600;color:var(--it2);text-transform:uppercase;letter-spacing:.02em;margin-left:2px}
+.ios-alert{background:var(--ig);border-radius:14px;text-align:center;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.ios-alert>b{display:block;font-size:15px;font-weight:600;padding:14px 12px 10px}
+.ios-field{display:flex;align-items:center;justify-content:flex-start;margin:0 12px 12px;padding:6px 8px;border-radius:7px;background:var(--ib);font-size:15px;text-align:left;font-variant-numeric:tabular-nums}
+.ios-caret{display:inline-block;width:2px;height:17px;background:var(--iblue);margin-left:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.ios-btns{display:grid;grid-template-columns:1fr 1fr;border-top:.5px solid var(--isep);color:var(--iblue);font-size:15px}
+.ios-btns span{padding:10px}.ios-btns span+span{border-left:.5px solid var(--isep)}
+.ios-list{background:var(--ig);border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.ios-list-h{display:block;text-align:center;font-size:13px;font-weight:600;color:var(--it2);padding:9px 12px 7px}
+.ios-list span{position:relative;display:flex;justify-content:space-between;padding:8px 14px;font-size:14.5px;border-top:.5px solid var(--isep)}
+.ios-list span.on{font-weight:600}.ios-list i{font-style:normal;color:var(--iblue)}
+.ios-siri{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start;background:var(--ig);border-radius:16px;padding:12px;font-size:14.5px;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.ios-siri img{border-radius:8px}
+.ios-ok{grid-column:1/-1;text-align:center;padding:8px;border-radius:10px;background:var(--ib);color:var(--iblue);font-weight:600}
+.ios-note{margin:0 2px 10px;font-size:13.5px;color:var(--it2);line-height:1.4}
+.ios-banner.solo{margin-top:0}
+.ios-more{display:inline-flex;align-items:center;gap:4px;margin:12px 2px 0;color:var(--iblue);font-size:14px;font-weight:600}
+.bankpick{margin:18px 0 0;padding:14px;border-radius:16px;background:var(--card);box-shadow:0 0 0 1px var(--line)}
+.bankpick>b{display:block;font-size:14px;margin-bottom:10px}
+.bank-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.bank-addr{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;background:var(--fill);font-size:15px;font-weight:600;margin-bottom:8px;word-break:break-all}
 .hl-hidden{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
 .hl-hidden>span{color:var(--ink2);font-size:13px;margin-right:2px}
 .editing .w{outline:1.5px dashed var(--ink3);outline-offset:6px;cursor:grab;touch-action:pan-y}

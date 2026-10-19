@@ -49,6 +49,7 @@ const P = {
   receipt: '<path d="M5.5 2.5v19l2.2-1.4 2.1 1.4 2.2-1.4 2.2 1.4 2.1-1.4 2.2 1.4v-19l-2.2 1.4-2.1-1.4-2.2 1.4-2.2-1.4-2.1 1.4z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
   sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>',
   mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4.5 7 7.5 6 7.5-6"/>',
   layout: '<rect x="4" y="4" width="7" height="9" rx="2"/><rect x="13" y="4" width="7" height="5" rx="2"/><rect x="13" y="11" width="7" height="9" rx="2"/><rect x="4" y="15" width="7" height="5" rx="2"/>',
   grip: '<circle cx="9" cy="6" r="1.1" fill="currentColor"/><circle cx="15" cy="6" r="1.1" fill="currentColor"/><circle cx="9" cy="12" r="1.1" fill="currentColor"/><circle cx="15" cy="12" r="1.1" fill="currentColor"/><circle cx="9" cy="18" r="1.1" fill="currentColor"/><circle cx="15" cy="18" r="1.1" fill="currentColor"/>',
@@ -1572,8 +1573,11 @@ function siriSheet() {
     </div>
 
     <div class="group-h"><span>2 · Aggiungi i comandi</span></div>
-    <div class="list">${SHORTCUTS.map(([n, d, i]) => `<a class="row" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">
-      <span class="ico">${ic(i, 20)}</span><span class="t"><b>${esc(n)}</b><small>${esc(d)}</small></span><span class="a" style="color:var(--ink2)">${ic("external", 18)}</span></a>`).join("")}</div>
+    ${SHORTCUTS.map(([n, d, i]) => `<section class="cmd">
+      <div class="auto-h"><span class="ico">${ic(i, 20)}</span><span><b>${esc(n)}</b><small>${esc(d)}</small></span></div>
+      ${cmdRender(n)}
+      <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">${ic("external", 17)}Scarica ${esc(n)}</a>
+    </section>`).join("")}
     <p class="hint">Tocca un comando per scaricarlo e aprilo (su Mac doppio clic dalla cartella Download, su iPhone dall'app File): in Comandi Rapidi tocca <b>Aggiungi comando</b>. La <b>prima volta che lo avvii</b> ti chiede il codice, già compilato se l'hai copiato: confermalo e non te lo chiederà più, nemmeno negli altri comandi e sugli altri dispositivi con iCloud.</p>
 
     <div class="group-h"><span>3 · Usali</span></div>
@@ -1588,6 +1592,7 @@ function siriSheet() {
     <button class="card auto-link" data-auto>${ic("bolt", 20)}<span><b>Automazioni</b><small>Uscite con Apple Pay ed entrate dalle email della banca, senza toccare niente</small></span>${ic("chevR", 16)}</button>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     sh.querySelector("[data-auto]").onclick = () => autoSheet();
+    sh.querySelectorAll("[data-auto-open]").forEach(b => b.onclick = () => autoSheet(b.dataset.autoOpen));
     $("#qGen").onclick = async () => {
       $("#qGen").disabled = true;
       const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -1611,9 +1616,46 @@ function siriSheet() {
   });
 }
 
+/* ============ come appaiono i comandi ============ */
+// What you see on the iPhone when a command runs, drawn in the style of iOS (one small screen per step)
+function cmdRender(name) {
+  const total = money(Math.max(D.total, 0)), st = monthStats()[5];
+  const alert = (q, v) => `<div class="ios-scr"><span class="ios-cap">1 · Chiede l'importo</span><div class="ios-alert"><b>${esc(q)}</b><span class="ios-field">${esc(v)}<i class="ios-caret"></i></span><div class="ios-btns"><span>Annulla</span><span><b>Fine</b></span></div></div></div>`;
+  const pick = (list, sel) => `<div class="ios-scr"><span class="ios-cap">2 · Scegli la categoria</span><div class="ios-list"><b class="ios-list-h">Categoria</b>${list.map(c => `<span class="${c === sel ? "on" : ""}">${esc(c)}${c === sel ? "<i>✓</i>" : ""}</span>`).join("")}</div></div>`;
+  const done = (txt, cap = "3 · Fatto") => `<div class="ios-scr"><span class="ios-cap">${cap}</span><div class="ios-siri"><img src="icons/icon-192.png" alt="" width="30" height="30"><span>${esc(txt)}</span><span class="ios-ok">Fine</span></div></div>`;
+  const banner = txt => `<div class="ios-banner solo"><img src="icons/icon-192.png" alt="" width="26" height="26"><span><b>Keepo</b>${esc(txt)}</span><small>ora</small></div>`;
+  const say = t => `<div class="ios-say">${ic("mic", 14)}“${esc(t)}”</div>`;
+  const R = {
+    "Uscita Keepo": () => `${say("Ehi Siri, Uscita Keepo")}<div class="ios-seq">${alert("Quanto hai speso?", "12,50")}${pick(["Spesa", "Ristoranti", "Trasporti", "Svago"], "Ristoranti")}${done(`Uscita di 12,50 € segnata. Saldo: ${total}`)}</div>`,
+    "Entrata Keepo": () => `${say("Ehi Siri, Entrata Keepo")}<div class="ios-seq">${alert("Quanto è entrato?", "50")}${pick(["Stipendio", "Paghetta", "Regalo", "Vendita"], "Regalo")}${done(`Entrata di 50,00 € segnata. Saldo: ${total}`)}</div>`,
+    "Saldo Keepo": () => `${say("Ehi Siri, Saldo Keepo")}<div class="ios-seq one">${done(`Saldo: ${total}. Questo mese: entrate ${money(st.in)}, uscite ${money(st.out)}.`, "Risponde")}</div>`,
+    "Pagamento Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando paghi con Apple Pay. Ti arriva questa notifica:</p>${banner(`Uscita di 4,20 € da Bar Centrale (Hype). Saldo: ${total}`)}<button class="link ios-more" data-auto-open="pay">Come si attiva ${ic("chevR", 14)}</button>`,
+    "Accredito Keepo": () => `<p class="ios-note">Non lo avvii tu: parte da solo quando la banca ti scrive che hai ricevuto soldi. Ti arriva questa notifica:</p>${banner(`Entrata di 50,00 € su Hype. Saldo: ${total}`)}<button class="link ios-more" data-auto-open="mail">Come si attiva ${ic("chevR", 14)}</button>`
+  };
+  return `<div class="ios cmd-ios" aria-hidden="false">${R[name]()}</div>`;
+}
+
 /* ============ automazioni ============ */
 // Each automation is explained with a drawing of the iPhone screen it is built on (Comandi Rapidi,
 // in the style of Apple's Settings) whose numbered badges match the steps underneath.
+// Where banks send their alerts from. Only addresses confirmed by the bank go in "addr";
+// otherwise the domain, and the user copies the exact address from one of their emails.
+const BANK_MAIL = [
+  { name: "Revolut", addr: "no-reply@revolut.com", domain: "revolut.com" },
+  { name: "Hype", domain: "hype.it" },
+  { name: "Intesa Sanpaolo", domain: "intesasanpaolo.com", match: /intesa|isybank/i },
+  { name: "UniCredit", domain: "unicredit.it", match: /unicredit|buddy/i },
+  { name: "Poste / Postepay", domain: "posteitaliane.it", match: /poste|bancoposta/i },
+  { name: "Fineco", domain: "finecobank.com" },
+  { name: "N26", domain: "n26.com" },
+  { name: "PayPal", domain: "paypal.it" },
+  { name: "Satispay", domain: "satispay.com" },
+  { name: "BNL", domain: "bnl.it" },
+  { name: "BPER", domain: "bper.it" },
+  { name: "ING", domain: "ing.it", match: /^ing\b/i }
+];
+const bankFor = name => BANK_MAIL.find(b => (b.match || new RegExp(b.name.split(" ")[0], "i")).test(name));
+let mailBank = null;
 const iosSwitch = on => `<i class="ios-sw${on ? " on" : ""}"></i>`;
 const iosTok = (t, kind = "") => `<span class="ios-tok ${kind}">${esc(t)}</span>`;
 const nb = n => `<span class="nb">${n}</span>`;
@@ -1647,7 +1689,7 @@ const AUTOMATIONS = [
       <div class="ios-h">Quando</div>
       <div class="ios-group">
         <div class="ios-row">${nb(2)}<span class="ios-ic" style="background:#1E88F5">${ic("mail", 15)}</span><span class="grow">Ricevo un'email</span></div>
-        <div class="ios-row">${nb(3)}<span class="grow">Mittente</span><span class="ios-val">avvisi@tuabanca.it</span></div>
+        <div class="ios-row">${nb(3)}<span class="grow">Mittente</span><span class="ios-val" id="mailFrom">${esc(mailBank ? (mailBank.addr || "…@" + mailBank.domain) : "avvisi@tuabanca.it")}</span></div>
         <div class="ios-row"><span class="grow">L'oggetto contiene</span><span class="ios-val">accredito</span></div>
         <div class="ios-row">${nb(4)}<span class="grow">Esegui immediatamente</span>${iosSwitch(true)}</div>
       </div>
@@ -1658,24 +1700,47 @@ const AUTOMATIONS = [
     steps: [
       `Aggiungi il comando <b>Accredito Keepo</b> (in Siri e widget). Se non l'hai mai fatto, avvia prima un altro comando di Keepo per salvare il codice.`,
       `Sull'iPhone apri <b>Comandi Rapidi → Automazione → +</b> e scegli <b>Email</b>.`,
-      `In <b>Mittente</b> scrivi l'indirizzo da cui la banca ti manda gli avvisi (aprine uno in Mail e tocca il mittente per vederlo). Se vuoi, in <b>L'oggetto contiene</b> metti la parola dei loro avvisi di accredito.`,
+      `In <b>Mittente</b> metti l'indirizzo della tua banca: sceglila qui sotto e Keepo ti dice quale usare. Se vuoi, in <b>L'oggetto contiene</b> metti la parola dei loro avvisi di accredito.`,
       `Scegli <b>Esegui immediatamente</b>, poi <b>Avanti</b> → <b>Nuova automazione vuota</b>.`,
       `Aggiungi <b>Esegui comando rapido</b>, scegli <b>Accredito Keepo</b> e come input <b>Input comando rapido</b> (l'email). Fine. Ripeti per ogni banca.`],
     note: "Parte solo per le email del mittente che scegli tu: gli altri messaggi non li vede. L'email resta sull'iPhone: a Keepo arrivano solo la frase con l'importo (es. \"bonifico di 50,00 €\") e il nome della banca. Serve che la banca mandi un'email per ogni accredito: di solito si attiva tra le notifiche nell'app della banca. Se un'email arriva due volte, l'entrata viene segnata una volta sola." }
 ];
-function autoSheet() {
+function bankOut() {
+  const b = mailBank;
+  if (!b) return `<p class="pnote">Scegli la banca da cui vuoi segnare le entrate.</p>`;
+  return b.addr ? `<div class="bank-addr"><span class="num">${esc(b.addr)}</span><button class="pill sm" data-copy="${esc(b.addr)}">Copia</button></div>
+      <p class="pnote">È l'indirizzo che ${esc(b.name)} indica per le sue email. Mettilo in Mittente.</p>`
+    : `<div class="bank-addr"><span class="num">…@${esc(b.domain)}</span></div>
+      <p class="pnote">${esc(b.name)} scrive da indirizzi che finiscono con <b>@${esc(b.domain)}</b>, ma quello preciso degli avvisi cambia. Apri in Mail un loro avviso di accredito, tocca il mittente e copia l'indirizzo: è quello da mettere in Mittente. Se non ti mandano email per gli accrediti, attivale tra le notifiche dell'app della banca.</p>`;
+}
+function autoSheet(focus) {
+  if (!mailBank) mailBank = accounts().map(a => bankFor(a.name)).find(Boolean) || null;
   sheet(`<div class="sheet-h"><button class="l" data-back>‹ Siri</button><h3>Automazioni</h3><button class="r" data-x>Fine</button></div>
     <p class="hint" style="margin:0 4px 16px">Le automazioni sono regole di Comandi Rapidi sull'iPhone: quando succede una cosa (paghi, ti arriva un'email della banca), avviano un comando di Keepo da sole. Si preparano una volta, poi non devi più fare niente.</p>
     ${AUTOMATIONS.map(a => `<section class="auto" id="auto-${a.id}">
       <div class="auto-h"><span class="ico">${ic(a.icon, 20)}</span><span><b>${esc(a.title)}</b><small>${esc(a.short)}</small></span></div>
       ${a.render()}
       <ol class="auto-steps">${a.steps.map(t => `<li><span>${t}</span></li>`).join("")}</ol>
+      ${a.id === "mail" ? `<div class="bankpick"><b>La tua banca</b><div class="bank-chips">${BANK_MAIL.map(b => `<button class="pill sm${mailBank === b ? " on" : ""}" data-bank="${esc(b.name)}">${esc(b.name)}</button>`).join("")}</div><div id="bankOut">${bankOut()}</div></div>` : ""}
       <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(a.shortcut)}.shortcut" download="${esc(a.shortcut)}.shortcut">${ic("external", 17)}Scarica ${esc(a.shortcut)}</a>
       <p class="pnote">${esc(a.note)}</p>
     </section>`).join("")}
     <p class="foot">I comandi usano il tuo codice personale: se non l'hai ancora generato, torna in Siri e widget.</p>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     sh.querySelector("[data-back]").onclick = () => siriSheet();
+    sh.addEventListener("click", async e => {
+      const bb = e.target.closest("[data-bank]");
+      if (bb) {
+        mailBank = BANK_MAIL.find(b => b.name === bb.dataset.bank);
+        sh.querySelectorAll("[data-bank]").forEach(x => x.classList.toggle("on", x === bb));
+        $("#bankOut").innerHTML = bankOut();
+        $("#mailFrom").textContent = mailBank.addr || "…@" + mailBank.domain;
+        return;
+      }
+      const cp = e.target.closest("[data-copy]");
+      if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copy); toast("Indirizzo copiato"); } catch { toast(cp.dataset.copy); } }
+    });
+    if (focus) setTimeout(() => { const el = $("#auto-" + focus), sc = sh; if (el) sc.scrollTop = el.offsetTop - 12; }, 60);
   });
 }
 
