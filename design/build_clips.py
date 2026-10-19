@@ -54,7 +54,7 @@ CLIPS = {
            (17.5, ["Scrivi", "la banca."], "Il mittente giusto te lo dice Keepo"), (36.0, ["Fatto."], "Ogni accredito finisce in Keepo.")],
     taps=[(0.2, 145, 194), (5.1, 95, 310), (6.75, 113, 393), (10.0, 190, 770), (13.0, 92, 158), (16.0, 131, 668), (17.5, 212, 459),
           (35.5, 349, 780), (36.0, 363, 100), (38.75, 38, 84), (40.3, 157, 402)],
-    cam=[(0, 1, .5, .5), (17.4, 1, .5, .5), (18.2, 1.6, .38, .06), (35.4, 1.6, .38, .06), (35.9, 1.6, .45, .06), (36.4, 1.2, .5, .25), (37.5, 1.2, .5, .25), (38.6, 1, .5, .5), (40.8, 1, .5, .5), (41.3, 1.3, .5, .3)]),
+    cam=[(0, 1, .5, .5), (17.4, 1, .5, .5), (18.2, 2.2, .36, .18), (35.4, 2.2, .36, .18), (35.9, 2.2, .42, .18), (36.4, 1.2, .5, .25), (37.5, 1.2, .5, .25), (38.6, 1, .5, .5), (40.8, 1, .5, .5), (41.3, 1.3, .5, .3)]),
 }
 
 def rmask(w, h, r):
@@ -173,8 +173,10 @@ def render(name):
         s = s0 * z * (1 + punch)
         intro = back(t / .8, 1.1)
         rot = math.radians(1.1 * math.sin(t * .8) + 8 * (1 - ease(t / .8)))
-        Tx = W / 2 + 6 * math.sin(t * .5); Ty = 845 - (z - 1) * 170 + 7 * math.sin(t * 1.1) + (1 - intro) * 760
         Fx, Fy = OFF + fx * cur.width, OFF + fy * cur.height
+        Tx = W / 2 + 6 * math.sin(t * .5)
+        Ty = max(845 - (z - 1) * 170, 430 + (Fy - (OFF - 14)) * s)  # the top of the phone never covers the text
+        Ty += 7 * math.sin(t * 1.1) + (1 - intro) * 760
         a, bb = math.cos(rot) / s, math.sin(rot) / s; d_, e = -math.sin(rot) / s, math.cos(rot) / s
         coef = (a, bb, Fx - (a * Tx + bb * Ty), d_, e, Fy - (d_ * Tx + e * Ty))
         fr.alpha_composite(ph.transform((W, H), Image.AFFINE, coef, resample=Image.BICUBIC))
