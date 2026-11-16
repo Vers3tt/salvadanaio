@@ -579,7 +579,7 @@ function balanceChart() {
       <div class="btip" hidden></div>
     </div>
     <div class="bchart-x"><span>${esc(fmtDate(pts[0].t, { day: "numeric", month: "short" }))}</span>${fut ? `<span class="bx-today" style="left:${pct(today)}%">oggi</span><span>${esc(fmtDate(lastF.t, { day: "numeric", month: "short" }))}</span>` : "<span>oggi</span>"}</div>
-    ${fut ? `<p class="bproj">${ic("clock", 13)}<span>Tra 30 giorni, con ricorrenti e in arrivo</span><b class="num ${lastF.v < 0 ? "neg" : ""}">${money(lastF.v)}</b></p>` : ""}
+    ${fut ? `<p class="bproj">${ic("clock", 13)}<span>Fra 30 giorni (ricorrenti e soldi in arrivo compresi)</span><b class="num ${lastF.v < 0 ? "neg" : ""}">${money(lastF.v)}</b></p>` : ""}
   </div>`;
 }
 function chartHover(el, clientX) {
@@ -1120,9 +1120,9 @@ function txSheet(type, existing) {
       const off = new Set(), box = $("#scanItems");
       const paint = () => {
         const excl = r.items.reduce((a, it, i) => a + (off.has(i) ? it.amount : 0), 0);
-        box.innerHTML = `<details class="sitems"${off.size ? " open" : ""}><summary>${r.items.length} righe lette${r.itemsMatch ? "" : " (controlla, il totale non torna)"}${off.size ? ` · tolti ${esc(money(excl))}` : ""}</summary>
+        box.innerHTML = `<details class="sitems"${off.size ? " open" : ""}><summary>${r.items.length} righe lette${r.itemsMatch ? "" : ". La somma non fa il totale, controllale"}${off.size ? ` · tolti ${esc(money(excl))}` : ""}</summary>
           <div class="sitems-l">${r.items.map((it, i) => `<button type="button" class="sitem" data-si="${i}" aria-pressed="${!off.has(i)}"><span class="sbox">${ic("check", 13)}</span><span class="sn">${esc(it.name)}</span><span class="num${it.amount < 0 ? " pos" : ""}">${it.amount < 0 ? "−" : ""}${esc(money(Math.abs(it.amount)))}</span></button>`).join("")}</div>
-          <p class="hint">Togli la spunta a quello che non è tuo: l'importo scende da solo.${off.size && $("#oweOpen") ? ` <button type="button" class="link" id="siOwe">Te li deve qualcuno?</button>` : ""}</p></details>`;
+          <p class="hint">Togli la spunta a quello che non è tuo e l'importo si abbassa.${off.size && $("#oweOpen") ? ` <button type="button" class="link" id="siOwe">Te li deve qualcuno?</button>` : ""}</p></details>`;
         str = centsToInput(Math.max(0, r.total - excl)).replace(/,00$/, ""); draw();
         const so = $("#siOwe"); if (so) so.onclick = () => { $("#oweOpen").click(); $("#oweAmt").value = centsToInput(excl); $("#oweWho").focus(); };
       };
@@ -1503,7 +1503,7 @@ function duesWidget() {
   const inn = duesIn(), out = duesOut();
   if (!inn.length && !out.length) return `<section class="section">
     <div class="sec-h"><h2>Da ricevere</h2></div>
-    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca Arrivati quando li ricevi. Non contano nel saldo finché non arrivano.</span>
+    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca la spunta quando arrivano. Fino ad allora non contano nel saldo.</span>
     <button class="save small" data-due-new="in">Aggiungi</button></div></section>`;
   return `<section class="section">
     <div class="sec-h"><h2>Da ricevere</h2><button class="link" data-due-new="in">${ic("plus", 15)}Aggiungi</button></div>
@@ -1535,7 +1535,7 @@ function dueSheet(existing, preset = {}) {
       $("#dWhoL").textContent = dir === "out" ? "A chi" : "Da chi";
       const accs = accounts();
       $("#dAccs").innerHTML = accs.length ? `<span class="accs-l">${dir === "out" ? "Da quale conto" : "Dove arriveranno"}</span>` + accs.map(a => `<button class="achip" data-dacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
-      $("#dHint").textContent = dir === "out" ? "Quando li dai tocca Pagato: diventa un'uscita." : "Non conta nel saldo finché non tocchi Arrivati: allora diventa un'entrata sul conto scelto.";
+      $("#dHint").textContent = dir === "out" ? "Quando li hai dati tocca la spunta e diventa un'uscita." : "Finché non tocchi la spunta non conta nel saldo. Poi diventa un'entrata sul conto che scegli qui.";
     };
     sh.querySelector("[data-x]").onclick = close;
     sh.addEventListener("click", e => {
@@ -1562,7 +1562,7 @@ function dueDoneSheet(d) {
   let acc = d.account || lastAccount(), keepRest = !MARKETS.test(d.who || "");   // Vinted pays less because of fees: nothing else will come
   const out = d.dir === "out";
   sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${out ? "Pagato" : "Arrivati"}</h3><button class="r" id="ddGo">Segna</button></div>
-    <p class="hint" style="margin:0 4px 12px">${esc(dueTitle(d))} · ${money(d.amount)}. ${out ? "Diventa un'uscita." : "Diventa un'entrata e il saldo si aggiorna."}</p>
+    <p class="hint" style="margin:0 4px 12px">${esc(dueTitle(d))} · ${money(d.amount)}. ${out ? "La segno come uscita." : "La segno come entrata e il saldo cambia subito."}</p>
     <div class="fields"><div class="field"><label for="ddAmt">${out ? "Quanto hai dato" : "Quanto è arrivato"}</label><input id="ddAmt" inputmode="decimal" value="${esc(centsToInput(d.amount))}" style="text-align:right"></div></div>
     <div class="accs" id="ddAccs"></div>
     <div id="ddRest"></div>`, (sh, close) => {
@@ -1821,7 +1821,7 @@ function siriSheet() {
       ${cmdRender(n)}
       <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">${ic("external", 17)}Scarica ${esc(n)}</a>
     </section>`).join("")}
-    <p class="hint">Copia il codice, poi tocca un comando per scaricarlo e aprilo (su iPhone dall'app File, su Mac con doppio clic). Quando tocchi <b>Aggiungi comando</b>, Comandi Rapidi ti chiede il codice: <b>incollalo lì</b>. Resta dentro il comando, così funziona anche su Apple Watch e con Siri anche a iPhone bloccato. Hai già i comandi di prima? Prova prima il nuovo <b>Saldo Keepo</b>; se funziona sostituisci gli altri. Se sostituisci Pagamento o Accredito, ricollega la loro automazione (sotto, in Automazioni).</p>
+    <p class="hint">Copia il codice, poi tocca un comando per scaricarlo e aprilo (su iPhone dall'app File, su Mac con doppio clic). Quando tocchi <b>Aggiungi comando</b>, Comandi Rapidi ti chiede il codice: <b>incollalo lì</b>. Il codice resta salvato nel comando: per questo funziona su Apple Watch, e con Siri anche a iPhone bloccato. Hai già i comandi di prima? Prova prima il nuovo <b>Saldo Keepo</b>; se funziona sostituisci gli altri. Se sostituisci Pagamento o Accredito, ricollega la loro automazione (sotto, in Automazioni).</p>
 
     <div class="group-h"><span>3 · Usali dove ti serve</span></div>
     <div class="card howto">
@@ -1851,7 +1851,7 @@ function siriSheet() {
       $("#qBox").innerHTML = `<p>Ecco il tuo codice. <b>Copialo adesso</b>: per sicurezza non lo salvo e non potrò mostrartelo di nuovo. Se lo perdi, generane uno nuovo.</p>
         <div class="qtoken num" id="qTok">${esc(token)}</div>
         <div class="btnrow"><button class="save" id="qCopy">Copia codice</button><button class="save ghost" id="qNew">Genera di nuovo</button></div>
-        <p class="hint">Se ne generi uno nuovo, quello vecchio smette di funzionare: dovrai eliminare e riaggiungere i comandi incollando il codice nuovo.</p>`;
+        <p class="hint">Se ne generi uno nuovo, quello vecchio smette di funzionare: devi eliminare i comandi e aggiungerli di nuovo con il codice nuovo.</p>`;
       $("#qCopy").onclick = async () => {
         try { await navigator.clipboard.writeText(token); toast("Codice copiato"); }
         catch { const r = document.createRange(); r.selectNodeContents($("#qTok")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selezionato: copialo con Copia"); }
