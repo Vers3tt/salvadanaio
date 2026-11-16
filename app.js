@@ -68,6 +68,7 @@ const P = {
   chevR: '<path d="m9.5 6 6 6-6 6"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   cloudOff: '<path d="m3 3 18 18"/><path d="M8.2 6.2A6 6 0 0 1 16.4 10h.6a4 4 0 0 1 3.2 6.4M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M4 3.5v5h5M20 20.5v-5h-5"/>'
 };
 const ic = (name, size = 22) => `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name]}</svg>`;
@@ -463,6 +464,7 @@ function homeScreen() {
       <div class="ranges" role="group" aria-label="Periodo del grafico">${RANGES.map(([d, l]) => `<button data-range="${d}" aria-pressed="${range === d}">${l}</button>`).join("")}</div></div>
     <span class="big num${D.total < 0 ? " neg" : ""}">${tag(D.total)}</span>
     ${balanceDelta()}
+    ${duesIn().length ? `<p class="delta dues-line">${ic("clock", 13)}<b class="num">+${money(duesTotal(duesIn()))}</b> in arrivo, non ancora nel saldo</p>` : ""}
     ${accountsBlock()}
     ${balanceChart()}
     <p class="next">${next ? `Mancano <b class="num">${money(next.price - D.total)}</b> per ${esc(next.name)}`
@@ -472,6 +474,7 @@ function homeScreen() {
     <button class="act out" data-new="out">${ic("minus", 20)}Uscita</button>
     <button class="act in" data-new="in">${ic("plus", 20)}Entrata</button>
   </div>`,
+    dues: duesWidget,
     monthly: () => `<section class="section">
     <div class="sec-h"><h2>Mese per mese</h2></div>
     <div class="card monthly">${monthlyChart(months)}${monthSummary(months[selMonth])}</div>
@@ -522,30 +525,61 @@ function balanceDelta() {
   const label = { 30: "nell'ultimo mese", 90: "negli ultimi 3 mesi", 180: "negli ultimi 6 mesi", 365: "nell'ultimo anno" }[range];
   return `<p class="delta"><b class="num ${diff >= 0 ? "pos" : "neg"}">${diff >= 0 ? "+" : "−"}${money(Math.abs(diff))}</b> ${label}</p>`;
 }
+// next 30 days: recurring movements and money to receive / give with a date. Drawn dashed after "oggi".
+const PROJ_DAYS = 30;
+function projectionEvents() {
+  const now = Date.now(), end = now + PROJ_DAYS * DAY, ev = [];
+  for (const r of Object.values(S.rec)) {
+    if (!r.active) continue;
+    let t = r.next_ts, g = 0;
+    while (t <= end && g++ < 40) { if (t > now - DAY) ev.push({ t: Math.max(t, now), v: r.type === "in" ? r.amount : -r.amount }); t = advance(t, r.freq); }
+  }
+  for (const d of dues()) if (d.due && d.due <= end) ev.push({ t: Math.max(d.due, now), v: d.dir === "out" ? -d.amount : d.amount });
+  return ev;
+}
 function balanceChart() {
   if (D.txs.length < 2) return "";
-  const pts = chartPts = balanceSeries(range);
+  const past = balanceSeries(range), ev = projectionEvents();
+  const pts = past.map(p => ({ ...p })), today = past.length - 1;
+  if (ev.length) {
+    // today's and overdue items are clamped to now: they land in the first future day
+    for (let d = 1; d <= PROJ_DAYS; d++) {
+      const dEnd = past[today].t + d * DAY;
+      pts.push({ t: dEnd, v: past[today].v + ev.filter(e => e.t <= dEnd).reduce((a, e) => a + e.v, 0), future: true });
+    }
+  }
+  chartPts = pts;
   const W = 1000, H = 120, vals = pts.map(p => p.v);
   const min = Math.min(0, ...vals), max = Math.max(...vals, 1);
   const x = k => k / (pts.length - 1) * W, y = v => H - (v - min) / (max - min || 1) * H;
-  const line = pts.map((p, k) => (k ? "L" : "M") + x(k).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  const path = list => list.map(([p, k], i) => (i ? "L" : "M") + x(k).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  const pastIdx = past.map((p, k) => [p, k]), futIdx = pts.map((p, k) => [p, k]).slice(today);
+  const line = path(pastIdx), fut = ev.length ? path(futIdx) : "";
+  const up = past[today].v >= past[0].v, col = up ? "var(--green)" : "var(--neg)";
   const zero = min < 0 ? `<line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--ink3)" stroke-dasharray="4 6" vector-effect="non-scaling-stroke"/>` : "";
-  const lastY = y(pts[pts.length - 1].v) / H * 100;
+  const pct = k => k / (pts.length - 1) * 100, top = v => y(v) / H * 100;
+  // highest and lowest day of the period, like a stock chart
+  let hi = 0, lo = 0; past.forEach((p, k) => { if (p.v > past[hi].v) hi = k; if (p.v < past[lo].v) lo = k; });
+  const mark = (k, cls) => Math.abs(pct(k) - pct(today)) < 6 || pct(k) < 3 ? "" : `<span class="bmark ${cls}" style="left:${pct(k)}%;top:${top(past[k].v)}%"><i></i><em class="num">${moneyShort(past[k].v)}</em></span>`;
+  const lastF = pts[pts.length - 1];
   return `<div class="bchart" data-chart="balance">
     <div class="bchart-plot">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-        <line x1="0" x2="${W}" y1="0" y2="0" stroke="var(--line)" vector-effect="non-scaling-stroke"/>
+        <defs><linearGradient id="bgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
         <line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)" vector-effect="non-scaling-stroke"/>
         ${zero}
-        <path d="${line} L${W} ${H} L0 ${H}Z" fill="var(--ink)" opacity=".05"/>
-        <path d="${line}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="${line} L${x(today)} ${H} L0 ${H}Z" fill="url(#bgrad)"/>
+        <path d="${line}" fill="none" stroke="${col}" stroke-width="2.2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+        ${fut ? `<line x1="${x(today)}" x2="${x(today)}" y1="0" y2="${H}" stroke="var(--line)" vector-effect="non-scaling-stroke"/>
+        <path d="${fut}" fill="none" stroke="var(--ink2)" stroke-width="1.8" stroke-dasharray="5 5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : ""}
       </svg>
-      <span class="bdot end" style="left:100%;top:${lastY}%"></span>
+      ${hi !== lo ? mark(hi, "hi") + mark(lo, "lo") : ""}
+      <span class="bdot end" style="left:${pct(today)}%;top:${top(past[today].v)}%;background:${col}"></span>
       <span class="bcross" hidden></span><span class="bdot hov" hidden></span>
       <div class="btip" hidden></div>
-      <span class="ylab top num">${moneyShort(max)}</span><span class="ylab bot num">${moneyShort(min)}</span>
     </div>
-    <div class="bchart-x"><span>${esc(fmtDate(pts[0].t, { day: "numeric", month: "short" }))}</span><span>oggi</span></div>
+    <div class="bchart-x"><span>${esc(fmtDate(pts[0].t, { day: "numeric", month: "short" }))}</span>${fut ? `<span class="bx-today" style="left:${pct(today)}%">oggi</span><span>${esc(fmtDate(lastF.t, { day: "numeric", month: "short" }))}</span>` : "<span>oggi</span>"}</div>
+    ${fut ? `<p class="bproj">${ic("clock", 13)}<span>Tra 30 giorni, con ricorrenti e in arrivo</span><b class="num ${lastF.v < 0 ? "neg" : ""}">${money(lastF.v)}</b></p>` : ""}
   </div>`;
 }
 function chartHover(el, clientX) {
@@ -557,14 +591,16 @@ function chartHover(el, clientX) {
   const cross = plot.querySelector(".bcross"), dot = plot.querySelector(".hov"), tip = plot.querySelector(".btip");
   cross.hidden = dot.hidden = tip.hidden = false;
   cross.style.left = dot.style.left = left + "%"; dot.style.top = top + "%";
-  tip.innerHTML = `<span>${esc(fmtDate(p.t, { weekday: "short", day: "numeric", month: "short" }))}</span><b class="num">${money(p.v)}</b>`;
+  tip.innerHTML = `<span>${p.future ? "Previsto · " : ""}${esc(fmtDate(p.t, { weekday: "short", day: "numeric", month: "short" }))}</span><b class="num">${money(p.v)}</b>`;
   tip.style.left = Math.max(14, Math.min(86, left)) + "%";
-  plot.querySelector(".end").hidden = k === chartPts.length - 1;
+  plot.querySelector(".end").hidden = !p.future && k === chartPts.findIndex(q => q.future) - 1 || (!chartPts.some(q => q.future) && k === chartPts.length - 1);
+  plot.querySelectorAll(".bmark").forEach(m => m.style.opacity = .25);
 }
 function chartLeave(el) {
   const plot = el.querySelector(".bchart-plot");
   plot.querySelectorAll(".bcross,.hov,.btip").forEach(n => n.hidden = true);
   plot.querySelector(".end").hidden = false;
+  plot.querySelectorAll(".bmark").forEach(m => m.style.opacity = "");
 }
 
 /* last six months: income, spending and category split */
@@ -587,10 +623,13 @@ function monthStats() {
 function monthlyChart(months) {
   const max = Math.max(1, ...months.flatMap(m => [m.in, m.out]));
   const nice = niceMax(max);
+  // average spending of the finished months that have movements (the current one is still running)
+  const done = months.slice(0, -1).filter(m => m.in || m.out), avgOut = done.length >= 2 ? done.reduce((a, m) => a + m.out, 0) / done.length : 0;
   return `<div class="mchart">
     <div class="legend"><span><i class="sw in"></i>Entrate</span><span><i class="sw out"></i>Uscite</span></div>
     <div class="mplot">
       <div class="mgrid"><span class="num">${moneyShort(nice)}</span><span class="num">${moneyShort(nice / 2)}</span><span></span></div>
+      ${avgOut ? `<div class="mavg" style="bottom:calc(22px + (100% - 22px) * ${(avgOut / nice).toFixed(4)})"><span class="num">media uscite ${moneyShort(avgOut)}</span></div>` : ""}
       <div class="mbars">${months.map((m, k) => `<button class="mgroup${k === selMonth ? " sel" : ""}" data-month="${k}" aria-label="${esc(m.label)}: entrate ${money(m.in)}, uscite ${money(m.out)}">
         <span class="bars"><i class="bin" style="height:${m.in / nice * 100}%"></i><i class="bout" style="height:${m.out / nice * 100}%"></i></span>
         <span class="mlab">${m.short}</span></button>`).join("")}</div>
@@ -608,17 +647,36 @@ function monthSummary(m) {
     <div><span>Risparmio</span><b class="num ${net < 0 ? "neg" : "pos"}">${net < 0 ? "−" : ""}${money(Math.abs(net))}</b></div>
   </div>`;
 }
+const CAT_COLORS = { Spesa: "#4C7DF0", Casa: "#8B6CF0", Bollette: "#E9A23B", Trasporti: "#2BAFBF", Svago: "#E0628C", Ristoranti: "#EE7A4A", Shopping: "#B85CD0", Salute: "#3BAF7C", Altro: "#98A2B3", Obiettivo: "#6B7A99" };
+const catColor = n => CAT_COLORS[n] || "#98A2B3";
+// ring with the month total in the middle; each slice is a category, biggest first, starting at 12 o'clock
+function catDonut(m, rows) {
+  const spent = rows.filter(r => r[1] > 0);
+  if (!spent.length) return "";
+  const R = 42, C = 2 * Math.PI * R, gap = spent.length > 1 ? 1.2 : 0;
+  let acc = 0;
+  const arcs = spent.map(([n, v]) => {
+    const len = v / m.out * C, seg = `<circle r="${R}" cx="50" cy="50" fill="none" stroke="${catColor(n)}" stroke-width="13" stroke-dasharray="${Math.max(0, len - gap).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}"><title>${esc(n)}: ${esc(money(v))}</title></circle>`;
+    acc += len; return seg;
+  }).join("");
+  const top3 = spent.slice(0, 3).map(([n, v]) => `<span><i style="background:${catColor(n)}"></i>${esc(n)}<b class="num">${Math.round(v / m.out * 100)}%</b></span>`).join("");
+  return `<div class="card donut-card">
+    <div class="donut"><svg viewBox="0 0 100 100" aria-hidden="true"><g transform="rotate(-90 50 50)">${arcs}</g></svg>
+      <div class="donut-c"><small>Uscite</small><b class="num">${moneyShort(m.out)}</b></div></div>
+    <div class="donut-leg">${top3}</div>
+  </div>`;
+}
 function categoryBreakdown(m) {
   const budgets = S.settings.budgets || {};
   const names = new Set([...Object.keys(m.cats), ...Object.keys(budgets).filter(k => budgets[k] > 0)]);
   const rows = [...names].map(n => [n, m.cats[n] || 0, budgets[n] || 0]).sort((a, b) => b[1] - a[1] || b[2] - a[2]);
   if (!rows.length) return emptyCard("cart", "Nessuna spesa", `In ${m.label.toLowerCase()} non hai segnato uscite.`);
   const top = Math.max(...rows.map(r => r[1]), 1);
-  return `<div class="list cats-break">${rows.map(([name, v, bud]) => {
+  return catDonut(m, rows) + `<div class="list cats-break">${rows.map(([name, v, bud]) => {
     const icon = name === "Obiettivo" ? "flag" : (CATS.out.find(c => c[0] === name) || [, "arrowOut"])[1];
     const ratio = bud ? v / bud : 0, state = !bud ? "" : ratio > 1 ? "over" : ratio >= .8 ? "warn" : "";
     const sub = bud ? (ratio > 1 ? `Superato di ${money(v - bud)}` : `Restano ${money(bud - v)} di ${money(bud)}`) : "";
-    return `<button class="crow ${state}" data-budgets>
+    return `<button class="crow ${state}" data-budgets style="--cc:${catColor(name)}">
       <span class="ico">${ic(icon, 20)}</span>
       <div class="cmain"><div class="ctop"><b>${esc(name)}</b><span class="num">${money(v)}</span></div>
       <div class="cbar"><i style="width:${Math.min(100, bud ? ratio * 100 : v / top * 100)}%"></i></div>
@@ -642,24 +700,50 @@ function txRow(t) {
   </button>`;
 }
 
-let movQuery = "", movAcc = "";
+let movQuery = "", movAcc = "", movCat = "", movNote = "", movMoreNotes = false;
+// "Conad", " conad  " e "CONAD" sono la stessa cosa: minuscole, senza accenti, spazi ridotti
+const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const squash = s => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
 function movScreen() {
   return `
   <header class="nav"><div><h1>Movimenti</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-new="out" aria-label="Nuovo movimento">${ic("plus", 20)}</button></div></header>
   <div class="mov-grid"><aside class="mov-side">
-  <div class="search">${ic("search", 18)}<input id="movQ" type="search" placeholder="Cerca per nota o categoria" value="${esc(movQuery)}" autocomplete="off"></div>
+  <div class="search">${ic("search", 18)}<input id="movQ" type="search" placeholder="Cerca per nota, categoria o conto" value="${esc(movQuery)}" autocomplete="off"></div>
   <div class="seg" role="group">
     ${[["all","Tutti"],["in","Entrate"],["out","Uscite"]].map(([k, l]) => `<button data-filter="${k}" aria-pressed="${movFilter === k}">${l}</button>`).join("")}
   </div>
-  ${accounts().length ? `<div class="accs mov-accs">${[["", "Tutti i conti", ""], ...accounts().map(a => [a.id, a.name, a.color])].map(([id, n, c]) => `<button class="achip" data-macc="${esc(id)}" aria-pressed="${movAcc === id}">${c ? `<i class="adot" style="background:${c}"></i>` : ""}${esc(n)}</button>`).join("")}</div>` : ""}
+  <div id="movChips">${movChips()}</div>
   <div id="movSum">${movSummary()}</div>
   </aside>
   <div id="movList">${movList()}</div></div>`;
 }
-function movFiltered() {
-  const q = movQuery.trim().toLowerCase();
-  return D.txs.filter(t => (movFilter === "all" || t.type === movFilter) && (!movAcc || t.account === movAcc)
-    && (!q || (t.note || "").toLowerCase().includes(q) || catInfo(t.type, t.cat)[0].toLowerCase().includes(q)));
+// what is left after every filter except `skip`, so each chip row counts what you would get by tapping it
+function movBase(skip) {
+  const q = squash(movQuery);
+  return D.txs.filter(t => (movFilter === "all" || t.type === movFilter)
+    && (skip === "acc" || !movAcc || t.account === movAcc)
+    && (skip === "cat" || !movCat || catInfo(t.type, t.cat)[0] === movCat)
+    && (skip === "note" || !movNote || norm(t.note) === movNote)
+    && (!q || squash([t.note, catInfo(t.type, t.cat)[0], accById(t.account)?.name].join(" ")).includes(q)));
+}
+function movFiltered() { return movBase(); }
+function countBy(list, key) {
+  const m = new Map();
+  for (const t of list) { const k = key(t); if (!k) continue; const e = m.get(k[0]) || { k: k[0], label: k[1], n: 0, spell: {} }; e.n++; e.spell[k[1]] = (e.spell[k[1]] || 0) + 1; m.set(k[0], e); }
+  // the spelling you used most is the one shown
+  return [...m.values()].map(e => ({ ...e, label: Object.entries(e.spell).sort((a, b) => b[1] - a[1])[0][0] })).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+}
+function movChips() {
+  const chip = (attr, val, on, label, n, dot = "") => `<button class="achip" ${attr}="${esc(val)}" aria-pressed="${on}">${dot}${esc(label)}${n != null ? `<span class="cnt num">${n}</span>` : ""}</button>`;
+  const accs = accounts(), accList = movBase("acc");
+  const accRow = accs.length ? `<div class="accs mov-accs" role="group" aria-label="Conto">${chip("data-macc", "", !movAcc, "Tutti i conti", null)}${accs.map(a => ({ a, n: accList.filter(t => t.account === a.id).length })).filter(x => x.n || movAcc === x.a.id).map(({ a, n }) => chip("data-macc", a.id, movAcc === a.id, a.name, n, `<i class="adot" style="background:${a.color}"></i>`)).join("")}</div>` : "";
+  const cats = countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; });
+  const catRow = cats.length > 1 || movCat ? `<div class="accs mov-accs" role="group" aria-label="Categoria"><span class="accs-l">Categoria</span>${cats.map(c => chip("data-mcat", c.k, movCat === c.k, c.k, c.n)).join("")}</div>` : "";
+  const notes = countBy(movBase("note"), t => { const n = norm(t.note); return n ? [n, t.note.trim().replace(/\s+/g, " ")] : null; }).filter(x => x.n > 1 || x.k === movNote);
+  const shown = movMoreNotes ? notes : notes.slice(0, 8);
+  const noteRow = notes.length ? `<div class="accs mov-accs" role="group" aria-label="Nota"><span class="accs-l">Note</span>${shown.map(x => chip("data-mnote", x.k, movNote === x.k, x.label, x.n)).join("")}${notes.length > 8 ? `<button class="link" data-mnote-more>${movMoreNotes ? "Meno" : `Altre ${notes.length - 8}`}</button>` : ""}</div>` : "";
+  const any = movAcc || movCat || movNote;
+  return accRow + catRow + noteRow + (any ? `<button class="link mov-clear" data-mclear>${ic("close", 14)}Togli i filtri</button>` : "");
 }
 function movSummary() {
   const l = movFiltered(), inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
@@ -680,6 +764,7 @@ function movList() {
     const g = groups[groups.length - 1]; g.items.push(t); g.net += t.type === "in" ? t.amount : -t.amount;
   }
   if (!groups.length) return q ? emptyCard("search", "Nessun risultato", `Nessun movimento contiene "${movQuery.trim()}".`)
+    : movAcc || movCat || movNote ? emptyCard("search", "Nessun risultato", "Nessun movimento con questi filtri.")
     : emptyCard("receipt", "Niente da mostrare", "I movimenti che segni compaiono qui, divisi per mese.");
   return groups.map(g => `
     <div class="group-h"><span>${esc(g.d.toLocaleDateString("it-IT", { month: "long", year: "numeric" }))}</span><span class="num">${g.net >= 0 ? "+" : "−"}${money(Math.abs(g.net))}</span></div>
@@ -739,6 +824,7 @@ function moreScreen() {
     <button class="cell btn" data-check><span>Allinea il saldo</span><span>${esc(CHECK_EVERY.find(c => c[0] === checkEvery())[1])}</span></button>
     <button class="cell btn" data-more="accounts"><span>Conti</span><span>${accounts().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
+    <button class="cell btn" data-more="dues"><span>Da ricevere e da dare</span><span>${dues().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
   </div>
   <div class="group-h"><span>Prossimamente</span></div>
@@ -952,6 +1038,7 @@ function txSheet(type, existing) {
   sheet(`
     <div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo movimento"}</h3>${existing ? "<span></span>" : `<button class="r scanbtn" id="txScan">${ic("camera", 18)}Scontrino</button>`}</div>
     <p class="peek" id="scanMsg"></p>
+    <div id="scanItems"></div>
     <div class="seg" role="group"><button data-t="out">Uscita</button><button data-t="in">Entrata</button></div>
     <div class="amount"><div class="v num" id="amtV"></div><div class="worktime" id="wt"></div><div class="kbhint">Scrivi l'importo con la tastiera · Invio per salvare</div></div>
     <div class="cats" id="cats"></div>
@@ -962,6 +1049,11 @@ function txSheet(type, existing) {
       ${existing ? "" : `<div class="field"><label for="txRep">Ripeti</label><select id="txRep">
         <option value="">Mai</option><option value="week">Ogni settimana</option><option value="month">Ogni mese</option><option value="year">Ogni anno</option></select></div>`}
     </div>
+    ${existing ? "" : `<div class="owe" id="oweBox" hidden><button class="link" id="oweOpen">${ic("clock", 15)}Qualcuno ti deve una parte?</button>
+      <div class="fields" id="oweFields" hidden>
+        <div class="field"><label for="oweAmt">Ti deve</label><input id="oweAmt" inputmode="decimal" placeholder="0,00" style="text-align:right"></div>
+        <div class="field"><label for="oweWho">Chi</label><input id="oweWho" placeholder="Marco, Giulia…" maxlength="40" style="text-align:right"></div>
+      </div></div>`}
     <div class="keypad" id="keypad">${["1","2","3","4","5","6","7","8","9",",","0","⌫"].map(k => `<button type="button" data-k="${k}" aria-label="${k === "⌫" ? "Cancella" : k}">${k}</button>`).join("")}</div>
     <button class="save" id="txSave">Salva</button>
     ${existing && accounts().length && !isNeutral(existing) ? `<button class="save ghost" id="txSplit">${ic("transfer", 18)}Dividi tra più conti</button>` : ""}
@@ -978,6 +1070,7 @@ function txSheet(type, existing) {
       const accs = accounts();
       $("#accs").innerHTML = accs.length ? `<span class="accs-l">Conto</span>` + accs.map(a => `<button class="achip" data-acc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
       const wt = workTime(parseAmt(str)); $("#wt").innerHTML = wt && t === "out" ? `${ic("clock", 14)}≈ ${esc(wt)} di lavoro` : "";
+      if ($("#oweBox")) $("#oweBox").hidden = t !== "out";
       const s = $("#txSave"); s.className = "save " + t; s.disabled = !parseAmt(str);
       s.textContent = existing ? "Salva modifiche" : t === "in" ? "Aggiungi entrata" : "Aggiungi uscita";
     };
@@ -992,6 +1085,7 @@ function txSheet(type, existing) {
       draw();
     };
     sh.querySelector("[data-x]").onclick = close;
+    if ($("#oweOpen")) $("#oweOpen").onclick = () => { $("#oweOpen").hidden = true; $("#oweFields").hidden = false; const a = parseAmt(str); if (a) $("#oweAmt").value = centsToInput(Math.round(a / 2)); $("#oweWho").focus(); };
     sh.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { t = b.dataset.t; draw(); });
     $("#cats").onclick = e => { const b = e.target.closest("[data-cat]"); if (b) { cat = cat === b.dataset.cat ? "" : b.dataset.cat; draw(); } };
     $("#accs").onclick = e => { const b = e.target.closest("[data-acc]"); if (b) { acc = acc === b.dataset.acc ? "" : b.dataset.acc; draw(); } };
@@ -1012,6 +1106,7 @@ function txSheet(type, existing) {
           if (r.date) { $("#txDate").value = r.date; got.push("data"); }
           if (r.cat && !cat) { t = "out"; cat = r.cat; got.push("categoria " + r.cat); }
           t = "out"; draw();
+          if (r.items.length) scanItems(r);
           msg(got.length ? `Letto: ${got.join(", ")}. Controlla e salva.` : "Non riesco a leggere il totale: prova con una foto più dritta e illuminata, o scrivilo tu.", got.length ? "ok" : "warn");
         } catch (err) {
           console.warn(err);
@@ -1019,6 +1114,20 @@ function txSheet(type, existing) {
         }
       };
       f.click();
+    };
+    // the lines read from the receipt: untick what isn't yours and the amount follows
+    const scanItems = r => {
+      const off = new Set(), box = $("#scanItems");
+      const paint = () => {
+        const excl = r.items.reduce((a, it, i) => a + (off.has(i) ? it.amount : 0), 0);
+        box.innerHTML = `<details class="sitems"${off.size ? " open" : ""}><summary>${r.items.length} righe lette${r.itemsMatch ? "" : " (controlla, il totale non torna)"}${off.size ? ` · tolti ${esc(money(excl))}` : ""}</summary>
+          <div class="sitems-l">${r.items.map((it, i) => `<button type="button" class="sitem" data-si="${i}" aria-pressed="${!off.has(i)}"><span class="sbox">${ic("check", 13)}</span><span class="sn">${esc(it.name)}</span><span class="num${it.amount < 0 ? " pos" : ""}">${it.amount < 0 ? "−" : ""}${esc(money(Math.abs(it.amount)))}</span></button>`).join("")}</div>
+          <p class="hint">Togli la spunta a quello che non è tuo: l'importo scende da solo.${off.size && $("#oweOpen") ? ` <button type="button" class="link" id="siOwe">Te li deve qualcuno?</button>` : ""}</p></details>`;
+        str = centsToInput(Math.max(0, r.total - excl)).replace(/,00$/, ""); draw();
+        const so = $("#siOwe"); if (so) so.onclick = () => { $("#oweOpen").click(); $("#oweAmt").value = centsToInput(excl); $("#oweWho").focus(); };
+      };
+      box.onclick = e => { const b = e.target.closest("[data-si]"); if (!b) return; const i = +b.dataset.si; off.has(i) ? off.delete(i) : off.add(i); paint(); };
+      paint();
     };
     sh.addEventListener("keydown", e => {
       if (e.target.tagName === "INPUT") { if (e.key === "Enter") { e.preventDefault(); $("#txSave").click(); } return; }
@@ -1043,9 +1152,12 @@ function txSheet(type, existing) {
       const before = existing ? { ...existing } : null;
       const freq = existing ? "" : $("#txRep").value;
       const spentBefore = t === "out" ? spentThisMonth(cat) : 0;
+      const owe = !existing && t === "out" && $("#oweAmt") ? Math.min(parseAmt($("#oweAmt").value), amount) : 0;
+      const oweWho = owe ? $("#oweWho").value.trim().replace(/\s+/g, " ") : "", oweId = uuid();
       close(); putTx(rec);
       if (freq) putRec({ id: uuid(), type: t, amount, cat, note: rec.note, account: rec.account, freq, next_ts: advance(ts, freq), active: true, created_at: Date.now() });
-      toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata${freq ? `, si ripete ${FREQ[freq].toLowerCase()}` : ""}`, () => before ? putTx(before) : delTx(rec.id));
+      if (owe) putDue({ id: oweId, dir: "in", amount: owe, who: oweWho, note: rec.note || catInfo("out", cat)[0], account: rec.account, due: null, tx: rec.id, created_at: Date.now() });
+      toast(existing ? "Movimento aggiornato" : `${t === "in" ? "Entrata" : "Uscita"} di ${money(amount)} segnata${owe ? `, ${money(owe)} da ricevere` : ""}${freq ? `, si ripete ${FREQ[freq].toLowerCase()}` : ""}`, () => { if (before) putTx(before); else { delTx(rec.id); if (owe) delDue(oweId); } });
       if (!existing) mascotReact(t === "in" ? "jump" : "squish");
       if (!existing && t === "out") setTimeout(() => budgetAlert(cat, spentBefore, spentBefore + amount), 1800);
       celebrateIfReached(before ? before : null);
@@ -1355,6 +1467,135 @@ function recurringSheet() {
   });
 }
 
+/* ============ da ricevere / da dare ============ */
+// Money you are waiting for (a Vinted sale, a friend who owes you) or that you owe. It lives in the
+// settings JSON, never among the transactions: it is not in the balance, the charts or "Saldo Keepo"
+// until you tap Arrivati / Pagato, which turns it into a normal movement on the chosen account.
+const MARKETS = /vinted|subito|ebay|wallapop|depop|etsy|amazon/i;
+const dues = () => (S.settings.dues || []).filter(d => d && d.amount > 0);
+const duesIn = () => dues().filter(d => d.dir !== "out").sort((a, b) => (a.due || a.created_at) - (b.due || b.created_at));
+const duesOut = () => dues().filter(d => d.dir === "out").sort((a, b) => (a.due || a.created_at) - (b.due || b.created_at));
+const duesTotal = list => list.reduce((s, d) => s + d.amount, 0);
+function putDue(d) { saveSettings({ dues: [...dues().filter(x => x.id !== d.id), d] }); }
+function delDue(id) { saveSettings({ dues: dues().filter(x => x.id !== id) }); }
+const dueTitle = d => d.who && d.note ? `${d.who} · ${d.note}` : d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere");
+function dueWhen(d) {
+  const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+  if (d.due) {
+    const days = Math.round((new Date(d.due).setHours(0, 0, 0, 0) - day0) / DAY);
+    return days < 0 ? `in ritardo di ${-days === 1 ? "un giorno" : -days + " giorni"}` : days === 0 ? "atteso oggi" : days === 1 ? "atteso domani" : `atteso ${fmtDate(d.due, { day: "numeric", month: "short" })}`;
+  }
+  const ago = Math.floor((day0 - new Date(d.created_at).setHours(0, 0, 0, 0)) / DAY);
+  return ago <= 0 ? "segnato oggi" : ago === 1 ? "da ieri" : `da ${ago} giorni`;
+}
+function dueRow(d) {
+  const a = accById(d.account), late = d.due && d.due < new Date().setHours(0, 0, 0, 0);
+  return `<div class="row duerow">
+    <button class="dmain" data-due="${esc(d.id)}">
+      <span class="ico">${ic(d.dir === "out" ? "arrowOut" : MARKETS.test(d.who || "") ? "label" : "clock", 20)}</span>
+      <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b><small class="${late ? "late" : ""}">${a ? `<i class="adot" style="background:${a.color}"></i>` : ""}${esc([d.who && d.note, dueWhen(d), a?.name].filter(Boolean).join(" · "))}</small></span>
+      <span class="a num ${d.dir === "out" ? "out" : "in"}">${d.dir === "out" ? "−" : "+"}${money(d.amount)}</span>
+    </button>
+    <button class="darr ${d.dir === "out" ? "out" : "in"}" data-due-done="${esc(d.id)}" aria-label="${d.dir === "out" ? "Pagato" : "Arrivati"}: ${esc(dueTitle(d))}" title="${d.dir === "out" ? "Pagato" : "Arrivati"}">${ic("check", 18)}</button>
+  </div>`;
+}
+function duesWidget() {
+  const inn = duesIn(), out = duesOut();
+  if (!inn.length && !out.length) return `<section class="section">
+    <div class="sec-h"><h2>Da ricevere</h2></div>
+    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca Arrivati quando li ricevi. Non contano nel saldo finché non arrivano.</span>
+    <button class="save small" data-due-new="in">Aggiungi</button></div></section>`;
+  return `<section class="section">
+    <div class="sec-h"><h2>Da ricevere</h2><button class="link" data-due-new="in">${ic("plus", 15)}Aggiungi</button></div>
+    ${inn.length ? `<p class="sec-note">In arrivo <b class="num pos">${money(duesTotal(inn))}</b></p><div class="list">${inn.map(dueRow).join("")}</div>` : ""}
+    ${out.length ? `<p class="sec-note" style="margin-top:${inn.length ? 14 : 0}px">Devi dare <b class="num">${money(duesTotal(out))}</b></p><div class="list">${out.map(dueRow).join("")}</div>` : ""}
+  </section>`;
+}
+function dueSheet(existing, preset = {}) {
+  let dir = existing?.dir || preset.dir || "in", acc = existing ? existing.account || "" : preset.account ?? lastAccount();
+  const pastWho = [...new Map(dues().concat(S.settings.duesWho || []).map(d => [norm(d.who), (d.who || "").trim()])).values()].filter(Boolean);
+  const whoChips = [...new Set(["Vinted", "Subito", ...pastWho])].slice(0, 8);
+  const dueVal = existing?.due ? new Date(existing.due).toISOString().slice(0, 10) : "";
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo"}</h3><button class="r" id="dGo">Salva</button></div>
+    <div class="seg" role="group"><button data-d="in">Da ricevere</button><button data-d="out">Da dare</button></div>
+    <div class="fields">
+      <div class="field"><label for="dAmt">Importo</label><input id="dAmt" inputmode="decimal" placeholder="0,00" value="${existing ? esc(centsToInput(existing.amount)) : preset.amount ? esc(centsToInput(preset.amount)) : ""}" style="text-align:right"></div>
+      <div class="field"><label for="dWho" id="dWhoL">Da chi</label><input id="dWho" placeholder="Vinted, Marco…" maxlength="40" value="${esc(existing?.who || preset.who || "")}" style="text-align:right"></div>
+    </div>
+    <div class="accs" id="dWhoChips">${whoChips.map(w => `<button class="achip" data-dwho="${esc(w)}">${esc(w)}</button>`).join("")}</div>
+    <div class="fields">
+      <div class="field"><input id="dNote" placeholder="Per cosa (facoltativo): maglione, cena…" maxlength="60" value="${esc(existing?.note || preset.note || "")}"></div>
+      <div class="field"><label for="dDue">Quando arriva</label><input id="dDue" type="date" value="${dueVal}" style="text-align:right"></div>
+    </div>
+    <div class="accs" id="dAccs"></div>
+    <p class="hint" id="dHint"></p>
+    ${existing ? `<button class="save danger" id="dDel">Elimina</button>` : ""}`, (sh, close) => {
+    const draw = () => {
+      sh.querySelectorAll("[data-d]").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === dir));
+      $("#dWhoL").textContent = dir === "out" ? "A chi" : "Da chi";
+      const accs = accounts();
+      $("#dAccs").innerHTML = accs.length ? `<span class="accs-l">${dir === "out" ? "Da quale conto" : "Dove arriveranno"}</span>` + accs.map(a => `<button class="achip" data-dacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
+      $("#dHint").textContent = dir === "out" ? "Quando li dai tocca Pagato: diventa un'uscita." : "Non conta nel saldo finché non tocchi Arrivati: allora diventa un'entrata sul conto scelto.";
+    };
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => {
+      const d = e.target.closest("[data-d]"); if (d) { dir = d.dataset.d; draw(); }
+      const a = e.target.closest("[data-dacc]"); if (a) { acc = acc === a.dataset.dacc ? "" : a.dataset.dacc; draw(); }
+      const w = e.target.closest("[data-dwho]"); if (w) { $("#dWho").value = w.dataset.dwho; $("#dNote").focus(); }
+    });
+    $("#dGo").onclick = () => {
+      const amount = parseAmt($("#dAmt").value);
+      if (!amount) { toast("Scrivi l'importo"); $("#dAmt").focus(); return; }
+      const dv = $("#dDue").value, due = dv ? (([y, m, dd]) => new Date(y, m - 1, dd, 12).getTime())(dv.split("-").map(Number)) : null;
+      const who = $("#dWho").value.trim().replace(/\s+/g, " ");
+      const item = { id: existing?.id || uuid(), dir, amount, who, note: $("#dNote").value.trim(), account: acc || null, due, tx: existing?.tx || preset.tx || null, created_at: existing?.created_at || Date.now() };
+      close(); putDue(item);
+      toast(existing ? "Aggiornato" : dir === "out" ? `Da dare ${money(amount)}${who ? " a " + who : ""}` : `In arrivo ${money(amount)}${who ? " da " + who : ""}`, existing ? null : () => delDue(item.id));
+    };
+    if (existing) $("#dDel").onclick = () => { const c = { ...existing }; close(); delDue(c.id); toast("Eliminato", () => putDue(c)); };
+    draw();
+    if (!existing && !preset.amount) setTimeout(() => $("#dAmt")?.focus(), 250);
+  });
+}
+// confirm what actually arrived: Vinted may pay a bit less, a friend may give back only part
+function dueDoneSheet(d) {
+  let acc = d.account || lastAccount(), keepRest = !MARKETS.test(d.who || "");   // Vinted pays less because of fees: nothing else will come
+  const out = d.dir === "out";
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${out ? "Pagato" : "Arrivati"}</h3><button class="r" id="ddGo">Segna</button></div>
+    <p class="hint" style="margin:0 4px 12px">${esc(dueTitle(d))} · ${money(d.amount)}. ${out ? "Diventa un'uscita." : "Diventa un'entrata e il saldo si aggiorna."}</p>
+    <div class="fields"><div class="field"><label for="ddAmt">${out ? "Quanto hai dato" : "Quanto è arrivato"}</label><input id="ddAmt" inputmode="decimal" value="${esc(centsToInput(d.amount))}" style="text-align:right"></div></div>
+    <div class="accs" id="ddAccs"></div>
+    <div id="ddRest"></div>`, (sh, close) => {
+    const draw = () => {
+      const accs = accounts();
+      $("#ddAccs").innerHTML = accs.length ? `<span class="accs-l">${out ? "Da quale conto" : "Su quale conto"}</span>` + accs.map(a => `<button class="achip" data-ddacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
+      const v = parseAmt($("#ddAmt").value);
+      $("#ddRest").innerHTML = v && v < d.amount ? `<span class="accs"><span class="accs-l">Gli altri ${esc(money(d.amount - v))}</span><button class="achip" data-ddkeep="1" aria-pressed="${keepRest}">${out ? "Li do dopo" : "Arrivano dopo"}</button><button class="achip" data-ddkeep="0" aria-pressed="${!keepRest}">${out ? "Non li devo più" : "Non arrivano"}</button></span>` : "";
+    };
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => { const a = e.target.closest("[data-ddacc]"); if (a) { acc = acc === a.dataset.ddacc ? "" : a.dataset.ddacc; draw(); } const k = e.target.closest("[data-ddkeep]"); if (k) { keepRest = k.dataset.ddkeep === "1"; draw(); } });
+    $("#ddAmt").addEventListener("input", draw);
+    $("#ddGo").onclick = () => {
+      const v = parseAmt($("#ddAmt").value);
+      if (!v) { toast("Scrivi l'importo"); return; }
+      const cat = out ? "Altro" : MARKETS.test(d.who || "") ? "Vendita" : "Altro";
+      const note = (d.tx && !out ? "Rimborso" + (d.who ? " da " + d.who : "") : dueTitle(d)).slice(0, 80);
+      const tx = { id: uuid(), type: out ? "out" : "in", amount: v, cat, note, ts: Date.now(), account: acc || null };
+      const before = { ...d }, rest = keepRest ? d.amount - v : 0;
+      if (acc) rememberAccount(acc);
+      snapshotReached(); close();
+      S.settings = { ...S.settings, dues: rest > 0 ? dues().map(x => x.id === d.id ? { ...x, amount: rest } : x) : dues().filter(x => x.id !== d.id),
+        duesWho: [...(S.settings.duesWho || []).filter(x => norm(x.who) !== norm(d.who)), { who: d.who }].slice(-12) };
+      enqueue({ op: "up", t: "settings", row: { data: S.settings } });
+      putTx(tx);
+      toast(`${out ? "Uscita" : "Entrata"} di ${money(v)} segnata${rest > 0 ? `, restano ${money(rest)}` : ""}`, () => { delTx(tx.id); putDue(before); });
+      mascotReact(out ? "squish" : "jump");
+      celebrateIfReached();
+    };
+    draw();
+  });
+}
+
 /* ============ budgets ============ */
 function spentThisMonth(cat) {
   const n = new Date(), m0 = new Date(n.getFullYear(), n.getMonth(), 1).getTime();
@@ -1514,7 +1755,9 @@ function demoState() {
   const nextRent = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 1, 9).getTime();
   const rec = { "d-rec": { id: "d-rec", type: "out", amount: 39000, cat: "Casa", note: "Affitto", freq: "month", next_ts: nextRent, active: true, created_at: now - 90 * DAY } };
   return { tx, goals, rec, pending: [], mode: "local", lastSync: now,
-    settings: { onboarded: true, accounts: accs, budgets: { Ristoranti: 6000, Shopping: 8000 }, hourly: 1050, wageMode: "month", monthly: 145000, weekHours: "38" } };
+    settings: { onboarded: true, accounts: accs, budgets: { Ristoranti: 6000, Shopping: 8000 }, hourly: 1050, wageMode: "month", monthly: 145000, weekHours: "38",
+      dues: [{ id: "d-due1", dir: "in", amount: 3500, who: "Vinted", note: "Giacca di jeans", account: "a-rev", due: now + 2 * DAY, tx: null, created_at: now - 3 * DAY },
+             { id: "d-due2", dir: "in", amount: 1250, who: "Marco", note: "Pizzeria da Gino", account: "a-hype", due: null, tx: null, created_at: now - 6 * DAY }] } };
 }
 
 // ?demo&scene=… opens one screen of the guide, ready to be photographed
@@ -1564,7 +1807,7 @@ async function sha256hex(t) {
 }
 function siriSheet() {
   sheet(`<div class="sheet-h"><span></span><h3>Siri e widget</h3><button class="r" data-x>Fine</button></div>
-    <p class="hint" style="margin:0 4px 14px">Segna entrate e uscite senza aprire l'app: con Siri ("Ehi Siri, Uscita Keepo"), da un widget nella schermata Home o dal Centro Notifiche del Mac.</p>
+    <p class="hint" style="margin:0 4px 14px">Segna entrate e uscite senza aprire l'app: dal Centro di Controllo, dalla schermata di blocco, con Siri, da Apple Watch o dalla barra dei menu del Mac.</p>
 
     <div class="group-h" style="margin-top:4px"><span>1 · Il tuo codice personale</span></div>
     <div class="card qcode" id="qBox">
@@ -1578,14 +1821,16 @@ function siriSheet() {
       ${cmdRender(n)}
       <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(n)}.shortcut" download="${esc(n)}.shortcut">${ic("external", 17)}Scarica ${esc(n)}</a>
     </section>`).join("")}
-    <p class="hint">Tocca un comando per scaricarlo e aprilo (su Mac doppio clic dalla cartella Download, su iPhone dall'app File): in Comandi Rapidi tocca <b>Aggiungi comando</b>. La <b>prima volta che lo avvii</b> ti chiede il codice, già compilato se l'hai copiato: confermalo e non te lo chiederà più, nemmeno negli altri comandi e sugli altri dispositivi con iCloud.</p>
+    <p class="hint">Copia il codice, poi tocca un comando per scaricarlo e aprilo (su iPhone dall'app File, su Mac con doppio clic). Quando tocchi <b>Aggiungi comando</b>, Comandi Rapidi ti chiede il codice: <b>incollalo lì</b>. Resta dentro il comando, così funziona anche su Apple Watch e con Siri anche a iPhone bloccato. Hai già i comandi di prima? Prova prima il nuovo <b>Saldo Keepo</b>; se funziona sostituisci gli altri. Se sostituisci Pagamento o Accredito, ricollega la loro automazione (sotto, in Automazioni).</p>
 
-    <div class="group-h"><span>3 · Usali</span></div>
+    <div class="group-h"><span>3 · Usali dove ti serve</span></div>
     <div class="card howto">
-      <p><b>Siri:</b> "Ehi Siri, Uscita Keepo", poi rispondi con l'importo e la categoria.</p>
-      <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>, e scegli i comandi di Keepo.</p>
-      <p><b>Mac:</b> i comandi arrivano anche sul Mac con iCloud. Aggiungili al widget Comandi Rapidi nel Centro Notifiche, o fissali nella barra dei menu da Comandi Rapidi → Impostazioni.</p>
+      <p><b>Centro di Controllo</b> (iOS 18 e successivi): apri il Centro di Controllo, tieni premuto su uno spazio vuoto → <b>Aggiungi un controllo</b> → <b>Comandi Rapidi</b> → scegli Uscita Keepo. Puoi metterlo anche in basso nella <b>schermata di blocco</b>: tieni premuto sulla schermata di blocco → <b>Personalizza</b> → tocca un controllo in basso.</p>
       <p><b>Tasto Azione</b> (iPhone 15 Pro e successivi): Impostazioni → Tasto Azione → Comando rapido → Uscita Keepo.</p>
+      <p><b>Siri:</b> "Ehi Siri, Uscita Keepo", poi di' l'importo e scegli la categoria. "Ehi Siri, Saldo Keepo" ti legge saldo e soldi in arrivo.</p>
+      <p><b>Apple Watch:</b> in Comandi Rapidi sull'iPhone tieni premuto il comando → <b>Dettagli</b> → attiva <b>Mostra su Apple Watch</b>. Sul Watch lo trovi nell'app Comandi e come complicazione sul quadrante.</p>
+      <p><b>Mac:</b> i comandi arrivano anche sul Mac con iCloud. In Comandi Rapidi apri il comando → <b>Dettagli</b> (ⓘ) → <b>Fissa nella barra dei menu</b>. Oppure aggiungili al widget Comandi Rapidi nel Centro Notifiche.</p>
+      <p><b>Widget iPhone:</b> tieni premuto sulla schermata Home → <b>Modifica</b> → <b>Aggiungi widget</b> → <b>Comandi Rapidi</b>.</p>
     </div>
 
     <div class="group-h"><span>4 · In automatico</span></div>
@@ -1606,7 +1851,7 @@ function siriSheet() {
       $("#qBox").innerHTML = `<p>Ecco il tuo codice. <b>Copialo adesso</b>: per sicurezza non lo salvo e non potrò mostrartelo di nuovo. Se lo perdi, generane uno nuovo.</p>
         <div class="qtoken num" id="qTok">${esc(token)}</div>
         <div class="btnrow"><button class="save" id="qCopy">Copia codice</button><button class="save ghost" id="qNew">Genera di nuovo</button></div>
-        <p class="hint">Se ne generi uno nuovo, quello vecchio smette di funzionare: al prossimo avvio i comandi te lo richiedono da soli.</p>`;
+        <p class="hint">Se ne generi uno nuovo, quello vecchio smette di funzionare: dovrai eliminare e riaggiungere i comandi incollando il codice nuovo.</p>`;
       $("#qCopy").onclick = async () => {
         try { await navigator.clipboard.writeText(token); toast("Codice copiato"); }
         catch { const r = document.createRange(); r.selectNodeContents($("#qTok")); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selezionato: copialo con Copia"); }
@@ -1655,7 +1900,7 @@ const AUTOMATIONS = [
     shortcut: "Pagamento Keepo",
     render: () => clip("automazione-applepay", "Video: in Comandi Rapidi si aggiunge a Pagamento Keepo l’automazione Wallet"),
     steps: [
-      `Aggiungi il comando <b>Pagamento Keepo</b> (in Siri e widget) e avvialo una volta a mano, per salvare il codice.`,
+      `Aggiungi il comando <b>Pagamento Keepo</b> (in Siri e widget) e incolla il codice quando te lo chiede.`,
       `In Comandi Rapidi tieni premuto <b>Pagamento Keepo</b> e scegli <b>Modifica</b>.`,
       `Tocca <b>Cerca</b>, scegli <b>Automazioni</b> e cerca <b>Wallet</b>.`,
       `Tocca <b>Qualsiasi carta</b> e scegli le tue carte (es. Hype e Revolut), poi la spunta. In Libreria → Automazioni la vedi attiva.`],
@@ -1664,7 +1909,7 @@ const AUTOMATIONS = [
     shortcut: "Accredito Keepo",
     render: () => clip("automazione-email", "Video: in Comandi Rapidi si aggiunge ad Accredito Keepo l’automazione Email con il mittente della banca"),
     steps: [
-      `Aggiungi il comando <b>Accredito Keepo</b> (in Siri e widget). Se non l'hai mai fatto, avvia prima un altro comando di Keepo per salvare il codice.`,
+      `Aggiungi il comando <b>Accredito Keepo</b> (in Siri e widget) e incolla il codice quando te lo chiede.`,
       `In Comandi Rapidi tieni premuto <b>Accredito Keepo</b> e scegli <b>Modifica</b>.`,
       `Tocca <b>Cerca</b>, scegli <b>Automazioni</b> e poi <b>Email</b>.`,
       `Tocca <b>Indirizzo email</b> e scrivi il mittente della tua banca: sceglila qui sotto e Keepo ti dice quale.`,
@@ -1691,7 +1936,7 @@ function autoSheet(focus) {
       <a class="save ghost auto-dl" href="comandi/${encodeURIComponent(a.shortcut)}.shortcut" download="${esc(a.shortcut)}.shortcut">${ic("external", 17)}Scarica ${esc(a.shortcut)}</a>
       <p class="pnote">${esc(a.note)}</p>
     </section>`).join("")}
-    <p class="foot">I comandi usano il tuo codice personale: se non l'hai ancora generato, torna in Siri e widget.</p>`, (sh, close) => {
+    <p class="foot">I comandi usano il tuo codice personale, che incolli quando li aggiungi: se non l'hai ancora generato, torna in Siri e widget.</p>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     sh.querySelector("[data-back]").onclick = () => siriSheet();
     sh.addEventListener("click", async e => {
@@ -1842,14 +2087,14 @@ function transferSheet() {
 // The Home is a set of widgets you can move and hide. Ported from the interaction of 21st.dev's
 // "Draggable Widget Grid": mouse and pen drag at once, touch needs a long press (so the page still
 // scrolls), keyboard uses Alt + arrows, and every move is animated. On desktop there are two columns.
-const WIDGETS = { balance: "Saldo", monthly: "Mese per mese", cats: "Dove vanno i soldi", goals: "Obiettivi", recent: "Ultimi movimenti" };
-const HL_DEFAULT = { order: ["balance", "monthly", "cats", "goals", "recent"], col: { balance: "a", monthly: "a", cats: "b", goals: "b", recent: "b" } };
+const WIDGETS = { balance: "Saldo", dues: "Da ricevere", monthly: "Mese per mese", cats: "Dove vanno i soldi", goals: "Obiettivi", recent: "Ultimi movimenti" };
+const HL_DEFAULT = { order: ["balance", "dues", "monthly", "cats", "goals", "recent"], col: { balance: "a", dues: "b", monthly: "a", cats: "b", goals: "b", recent: "b" } };
 // ready-made layouts, one tap in edit mode
 const HL_PRESETS = [
-  { id: "full", name: "Completa", text: "Tutto in vista", order: ["balance", "monthly", "cats", "goals", "recent"], col: HL_DEFAULT.col, hidden: [] },
-  { id: "essential", name: "Essenziale", text: "Saldo e ultimi movimenti", order: ["balance", "recent", "goals", "monthly", "cats"], col: { balance: "a", recent: "b", goals: "b", monthly: "a", cats: "b" }, hidden: ["goals", "monthly", "cats"] },
-  { id: "goals", name: "Obiettivi prima", text: "Per chi mette da parte", order: ["balance", "goals", "recent", "cats", "monthly"], col: { balance: "a", goals: "b", recent: "b", cats: "a", monthly: "a" }, hidden: ["monthly"] },
-  { id: "spending", name: "Controllo spese", text: "Budget e mesi davanti", order: ["balance", "cats", "monthly", "recent", "goals"], col: { balance: "a", cats: "b", monthly: "a", recent: "b", goals: "b" }, hidden: ["goals"] }
+  { id: "full", name: "Completa", text: "Tutto in vista", order: ["balance", "dues", "monthly", "cats", "goals", "recent"], col: HL_DEFAULT.col, hidden: [] },
+  { id: "essential", name: "Essenziale", text: "Saldo e ultimi movimenti", order: ["balance", "dues", "recent", "goals", "monthly", "cats"], col: { balance: "a", dues: "b", recent: "b", goals: "b", monthly: "a", cats: "b" }, hidden: ["goals", "monthly", "cats"] },
+  { id: "goals", name: "Obiettivi prima", text: "Per chi mette da parte", order: ["balance", "goals", "dues", "recent", "cats", "monthly"], col: { balance: "a", goals: "b", dues: "b", recent: "b", cats: "a", monthly: "a" }, hidden: ["monthly"] },
+  { id: "spending", name: "Controllo spese", text: "Budget e mesi davanti", order: ["balance", "cats", "monthly", "dues", "recent", "goals"], col: { balance: "a", cats: "b", monthly: "a", dues: "b", recent: "b", goals: "b" }, hidden: ["goals"] }
 ];
 let editHome = false, hlDrag = null;
 const isWide = () => matchMedia("(min-width: 900px)").matches;
@@ -1868,7 +2113,7 @@ function presetOf(L) {
 }
 // tiny drawing of a preset: the widgets as blocks in their columns (one column on the phone)
 function presetThumb(p) {
-  const vis = p.order.filter(k => !p.hidden.includes(k)), h = { balance: 14, monthly: 9, cats: 11, goals: 9, recent: 10 };
+  const vis = p.order.filter(k => !p.hidden.includes(k)), h = { balance: 14, dues: 8, monthly: 9, cats: 11, goals: 9, recent: 10 };
   const col = list => `<i>${list.map(k => `<u class="${k === "balance" ? "b" : ""}" style="height:${h[k]}px"></u>`).join("")}</i>`;
   return `<span class="pthumb" aria-hidden="true">${isWide() ? col(vis.filter(k => p.col[k] === "a")) + col(vis.filter(k => p.col[k] === "b")) : col(vis)}</span>`;
 }
@@ -2223,15 +2468,35 @@ let ocrWorker = null;
 function loadScript(src) {
   return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
-async function prepReceipt(file) {
+// Phone photos of thermal receipts: grey paper, uneven light, small text. Make the text tall enough
+// for Tesseract (long side ~2000 px) and, for the first pass, turn it into clean black on white with a
+// local threshold (each pixel against the average of its neighbourhood), which survives shadows.
+async function loadImg(file) {
   const url = URL.createObjectURL(file);
-  try {
-    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
-    const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
-    const x = c.getContext("2d"); x.filter = "grayscale(1) contrast(1.35)"; x.drawImage(im, 0, 0, c.width, c.height);
-    return c;
-  } finally { URL.revokeObjectURL(url); }
+  try { return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }); }
+  finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
+}
+function prepReceipt(im, binarize) {
+  const k = Math.min(2.5, 2000 / Math.max(im.naturalWidth, im.naturalHeight));
+  const w = Math.round(im.naturalWidth * k), h = Math.round(im.naturalHeight * k);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.drawImage(im, 0, 0, w, h);
+  // grey with a bit more contrast, computed here (canvas filters are missing on older Safari)
+  const img = x.getImageData(0, 0, w, h), d = img.data, g = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) { const o = i * 4, l = .299 * d[o] + .587 * d[o + 1] + .114 * d[o + 2]; g[i] = Math.max(0, Math.min(255, (l - 128) * 1.25 + 128)); }
+  if (!binarize) { for (let i = 0; i < w * h; i++) d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = g[i]; x.putImageData(img, 0, 0); return c; }
+  const S = new Float64Array((w + 1) * (h + 1));   // integral image: any box sum in four lookups
+  for (let yy = 1; yy <= h; yy++) { let row = 0; for (let xx = 1; xx <= w; xx++) { row += g[(yy - 1) * w + xx - 1]; S[yy * (w + 1) + xx] = S[(yy - 1) * (w + 1) + xx] + row; } }
+  const r = Math.max(8, Math.round(Math.min(w, h) / 40));
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+    const x0 = Math.max(0, xx - r), x1 = Math.min(w, xx + r + 1), y0 = Math.max(0, yy - r), y1 = Math.min(h, yy + r + 1);
+    const mean = (S[y1 * (w + 1) + x1] - S[y0 * (w + 1) + x1] - S[y1 * (w + 1) + x0] + S[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+    const v = g[yy * w + xx] < mean * 0.86 ? 0 : 255, o = (yy * w + xx) * 4;
+    d[o] = d[o + 1] = d[o + 2] = v;
+  }
+  x.putImageData(img, 0, 0);
+  return c;
 }
 const SHOP_CATS = [
   [/conad|coop|esselunga|lidl|carrefour|eurospin|despar|pam|penny|aldi|md\b|famila|sigma|crai|todis|tigre|iper|supermercat|market/i, "Spesa"],
@@ -2243,30 +2508,71 @@ const SHOP_CATS = [
 ];
 async function readReceipt(file, onProgress) {
   await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-  if (!ocrWorker) ocrWorker = await Tesseract.createWorker("ita", 1, { logger: m => { if (m.status === "recognizing text") onProgress(Math.round(m.progress * 100)); } });
-  const { data } = await ocrWorker.recognize(await prepReceipt(file));
-  return parseReceipt(data.text || "");
+  let pass = 0;
+  if (!ocrWorker) ocrWorker = await Tesseract.createWorker("ita", 1, { logger: m => { if (m.status === "recognizing text") onProgress(Math.round((pass + m.progress) / 2 * 100)); } });
+  const im = await loadImg(file);
+  // pass 1: black and white, the receipt read as one block of lines
+  await ocrWorker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+  let r = parseReceipt((await ocrWorker.recognize(prepReceipt(im, true))).data.text || "");
+  // pass 2 only if the total is missing or doesn't match the lines: the grey image, same layout
+  if (!r.total || !r.itemsMatch) {
+    pass = 1;
+    await ocrWorker.setParameters({ tessedit_pageseg_mode: "6" });
+    const r2 = parseReceipt((await ocrWorker.recognize(prepReceipt(im, false))).data.text || "");
+    const score = x => (x.total ? 2 : 0) + (x.itemsMatch ? 2 : 0) + Math.min(x.items.length, 10) / 10 + (x.date ? .5 : 0) + (x.shop ? .3 : 0);
+    if (score(r2) > score(r)) r = { ...r2, shop: r2.shop || r.shop, date: r2.date || r.date, cat: r2.cat || r.cat };
+    else r = { ...r, shop: r.shop || r2.shop, date: r.date || r2.date, cat: r.cat || r2.cat };
+  }
+  return r;
 }
+const RECEIPT_SKIP = /sub\s*-?\s*tot|t[o0]t[a4]l|iva\b|i\.v\.a|imponib|aliquot|resto|contant|pagament|bancomat|carta|credit|debit|import[o0]|euro\b|n\.\s*pezzi|articol|scontrino|document|operator|cassa\b|p\.\s*iva|c\.f\.|tel\b|via\b|piazza|corso|grazie|arriveder|transaz|autoriz|esercent|terminal|stan\b|mod\.?\s*pag/i;
 function parseReceipt(text) {
-  const lines = text.split(/\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const amountIn = l => { const m = l.replace(/(\d)\s*([.,])\s*(\d{2})\b/g, "$1$2$3").match(/(\d{1,5}(?:[.\s]\d{3})*[.,]\d{2})(?!\d)/g); return m ? m.map(v => parseAmt(v.replace(/\s/g, "").replace(/\.(?=\d{3}[.,])/g, ""))) : []; };
-  let total = 0;
-  for (const re of [/totale\s*(complessivo|euro|eur|€)?/i, /importo\s*(pagato|totale)?/i, /\btot\b/i, /pagamento|contante|bancomat|carta/i]) {
+  // OCR mistakes inside numbers: O→0, l/I→1, S→5 next to digits; "23 , 47" → "23,47"
+  const fix = l => l.replace(/(\d)[oO](?=[\d.,])/g, "$10").replace(/([\d.,])[oO](?=\d)/g, "$10").replace(/(\d)[lI|](?=\d)/g, "$11").replace(/([.,]\d)[oO]\b/g, "$10").replace(/([.,])[oO](\d)\b/g, "$10$2")
+    .replace(/(\d)\s*([.,])\s*(\d{2})\b/g, "$1$2$3").replace(/€\s*/g, "€ ");
+  const lines = text.split(/\n/).map(l => fix(l.replace(/\s+/g, " ").trim())).filter(Boolean);
+  const amountIn = l => { const m = l.match(/-?\s?(\d{1,5}(?:[.\s]\d{3})*[.,]\d{2})(?!\d)/g); return m ? m.map(v => (/-/.test(v) ? -1 : 1) * parseAmt(v.replace(/[-\s]/g, "").replace(/\.(?=\d{3}[.,])/g, ""))) : []; };
+  let total = 0, totalLine = -1;
+  for (const re of [/t[o0]t[a4]l[e3]\s*(c[o0]mplessiv[o0]|eur[o0]?|€|d[a4]\s*p[a4]g[a4]re)?/i, /imp[o0]rt[o0]\s*(p[a4]g[a4]t[o0]|t[o0]t[a4]le)/i, /\bt[o0]t\b/i, /p[a4]g[a4]ment[o0]\s*(elettr|c[a4]rt|contactless)|c[o0]nt[a4]nte|b[a4]nc[o0]m[a4]t|c[a4]rt[a4]/i]) {
     for (let i = 0; i < lines.length && !total; i++) {
-      if (!re.test(lines[i]) || /subtot|iva|resto|sconto/i.test(lines[i])) continue;
+      if (!re.test(lines[i]) || /sub\s*-?\s*t[o0]t|iva|resto|sc[o0]nt[o0]|risparmi/i.test(lines[i])) continue;
       const nextOk = lines[i + 1] && !/resto|iva|sconto|subtot/i.test(lines[i + 1]);
-      const v = amountIn(lines[i]).concat(nextOk ? amountIn(lines[i + 1]) : []);
-      if (v.length) total = v[0];
+      const v = amountIn(lines[i]).filter(x => x > 0).concat(nextOk ? amountIn(lines[i + 1]).filter(x => x > 0) : []);
+      if (v.length) { total = v[0]; totalLine = i; }
     }
     if (total) break;
   }
-  if (!total) { const all = lines.filter(l => !/resto|contante|pagamento/i.test(l)).flatMap(amountIn).filter(v => v < 500000); if (all.length) total = Math.max(...all); }
-  const shop = (lines.slice(0, 5).find(l => /[a-zà-ù]{3,}/i.test(l) && !/scontrino|documento|commerciale|via |p\.?\s?iva|tel/i.test(l)) || "").replace(/[^\p{L}\p{N}&' .-]/gu, "").trim().slice(0, 40);
-  const dm = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\b/);
+  // the bought lines: "DESCRIZIONE ... 1,99" above the total, discounts as negative lines
+  const items = [];
+  const end = totalLine >= 0 ? totalLine : lines.length;
+  for (let i = 0; i < end; i++) {
+    const l = lines[i], m = l.match(/^(.*?[a-zà-ù].*?)\s+(-?\s?\d{1,4}(?:\.\d{3})?[.,]\d{2})\s*(?:[A-Z]{1,2}|\d{1,2}\s?%)?[\s+!|*'"`.,:;]*$/i);
+    if (!m) continue;
+    let name = m[1].replace(/\s+\d{1,2}\s?%$/, "").replace(/^[^\p{L}\d]+|[^\p{L}\d)]+$/gu, "").trim();
+    const isDisc = /sc[o0]nt|promo|offert|-\s?\d/i.test(l);
+    if (!isDisc && RECEIPT_SKIP.test(name)) continue;
+    if (name.length < 2 || /^\d+$/.test(name)) continue;
+    let v = amountIn(m[2])[0]; if (!v) continue;
+    if (isDisc && v > 0) v = -v;
+    // "2 x 1,50" quantity lines belong to the next/previous description: keep the amount only
+    name = name.replace(/^\d+\s*[xX*]\s*\d+[.,]\d{2}\s*/, "").slice(0, 40) || "Articolo";
+    items.push({ name: name.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()), amount: v });
+  }
+  const sum = items.reduce((a, it) => a + it.amount, 0);
+  const fromTotalLine = total > 0;
+  if (!total && items.length >= 2 && sum > 0) total = sum;
+  if (!total) { const all = lines.filter(l => !/resto|contante|pagamento/i.test(l)).flatMap(amountIn).filter(v => v > 0 && v < 500000); if (all.length) total = Math.max(...all); }
+  const itemsMatch = fromTotalLine && items.length > 0 && Math.abs(sum - total) <= 2;
+  // shop name: a known brand in the first lines, else the first line written in capitals (receipt headers are)
+  const head = lines.slice(0, 6).filter(l => /[a-zà-ù]{3,}/i.test(l) && !/scontrino|documento|commerciale|vendita|prestazione|via |viale|piazza|p\.?\s?iva|partita|tel|www|benvenut/i.test(l));
+  const caps = l => { const L = l.replace(/[^a-zà-ù]/gi, ""); return L.length >= 3 && L.replace(/[^A-ZÀ-Ù]/g, "").length / L.length > .7; };
+  const shop = (head.find(l => SHOP_CATS.some(([re]) => re.test(l))) || head.find(caps) || head[0] || "").replace(/[^\p{L}\p{N}&' .-]/gu, "").trim().slice(0, 40);
+  const MESI = { gen: 1, feb: 2, mar: 3, apr: 4, mag: 5, giu: 6, lug: 7, ago: 8, set: 9, ott: 10, nov: 11, dic: 12 };
   let date = "";
-  if (dm) { let [, d, mo, y] = dm.map(Number); if (y < 100) y += 2000; if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2015) date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+  const dm = text.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\b/) || text.match(/\b(\d{1,2})\s?(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\.?\s?(\d{2,4})\b/i);
+  if (dm) { let d = +dm[1], mo = MESI[String(dm[2]).toLowerCase()] || +dm[2], y = +dm[3]; if (y < 100) y += 2000; if (d >= 1 && d <= 31 && mo >= 1 && mo <= 12 && y >= 2015 && y <= new Date().getFullYear() + 1) date = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
   const cat = (SHOP_CATS.find(([re]) => re.test(text)) || [])[1] || "";
-  return { total, shop: shop ? shop.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) : "", date, cat };
+  return { total, shop: shop ? shop.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase()) : "", date, cat, items: itemsMatch || items.length >= 2 ? items : [], itemsMatch };
 }
 
 /* ============ pagamenti divisi tra conti ============ */
@@ -2333,6 +2639,10 @@ document.addEventListener("click", e => {
     if (e.target.closest("[data-acc-manage]")) { accountsSheet(); return; }
     if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
     const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
+    const mc = e.target.closest("[data-mcat]"); if (mc) { movCat = movCat === mc.dataset.mcat ? "" : mc.dataset.mcat; render(); return; }
+    const mn = e.target.closest("[data-mnote]"); if (mn) { movNote = movNote === mn.dataset.mnote ? "" : mn.dataset.mnote; render(); return; }
+    if (e.target.closest("[data-mnote-more]")) { movMoreNotes = !movMoreNotes; render(); return; }
+    if (e.target.closest("[data-mclear]")) { movAcc = movCat = movNote = ""; render(); return; }
   }
   if (e.target.closest("[data-check]") && !e.target.closest(".sheet")) { checkSheet(); return; }
   if (e.target.closest("[data-hl-edit]")) { editHome = true; render(); document.querySelector(".edit-bar")?.scrollIntoView({ block: "nearest" }); return; }
@@ -2353,6 +2663,11 @@ document.addEventListener("click", e => {
     return;
   }
   if (e.target.closest("[data-budgets]") && !e.target.closest(".sheet")) { budgetSheet(); return; }
+  if (!e.target.closest(".sheet")) {
+    const dn = e.target.closest("[data-due-new]"); if (dn) { dueSheet(null, { dir: dn.dataset.dueNew }); return; }
+    const dd = e.target.closest("[data-due-done]"); if (dd) { const d = dues().find(x => x.id === dd.dataset.dueDone); if (d) dueDoneSheet(d); return; }
+    const de = e.target.closest("[data-due]"); if (de) { const d = dues().find(x => x.id === de.dataset.due); if (d) dueSheet(d); return; }
+  }
   const mb0 = e.target.closest("[data-mascot]");
   if (mb0) { mascotReact("jump"); mascotSay(mb0); return; }
   const rb = e.target.closest("[data-range]"), mb = e.target.closest("[data-month]");
@@ -2374,6 +2689,7 @@ document.addEventListener("click", e => {
     else if (a === "export") exportBackup();
     else if (a === "budgets") budgetSheet();
     else if (a === "recurring") recurringSheet();
+    else if (a === "dues") { const L = homeLayout(); if (L.hidden.includes("dues")) { L.hidden = L.hidden.filter(k => k !== "dues"); saveLayout(L); } setTab("home"); setTimeout(() => document.querySelector('[data-w="dues"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }
     else if (a === "password") passwordSheet(false);
     else if (a === "delete") deleteAccountSheet();
     else if (a === "siri") siriSheet();
@@ -2388,7 +2704,7 @@ document.addEventListener("pointerdown", e => { const p = e.target.closest("[dat
 document.addEventListener("pointerdown", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
 document.addEventListener("pointerout", e => { const c = e.target.closest("[data-chart=balance]"); if (c && !c.contains(e.relatedTarget)) chartLeave(c); });
 document.addEventListener("input", e => {
-  if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); $("#movSum").innerHTML = movSummary(); }
+  if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); $("#movSum").innerHTML = movSummary(); $("#movChips").innerHTML = movChips(); }
 });
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || closeSheet || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || !S.mode || needsOnboarding()) return;

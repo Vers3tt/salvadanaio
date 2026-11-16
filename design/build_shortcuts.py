@@ -23,46 +23,22 @@ def dict_items(pairs):  # [(key, value-field)] -> WFDictionaryFieldValue
             "WFSerializationType": "WFDictionaryFieldValue"}
 def act(ident, params): return {"WFWorkflowActionIdentifier": ident, "WFWorkflowActionParameters": params}
 
-CODE_PATH = "Keepo/codice.txt"   # in iCloud Drive → Comandi Rapidi, condiviso da tutti i comandi
-def named(name):  # text field made of a named variable
-    return {"Value": {"string": "\uFFFC", "attachmentsByRange": {"{0, 1}": {"Type": "Variable", "VariableName": name}}},
-            "WFSerializationType": "WFTextTokenString"}
+# Il codice personale sta DENTRO il comando: lo chiede Comandi Rapidi quando lo aggiungi (domanda di importazione)
+# e lo scrive nella prima azione "Testo". Niente file in iCloud né appunti: le azioni sui file non esistono
+# su Apple Watch e non funzionano a iPhone bloccato (Siri dalla schermata di blocco, CarPlay).
+CODE_PROMPT = "Incolla il codice personale di Keepo (app → Altro → Siri e widget → Copia codice)"
 
 def token_action():
-    """Ritorna (azioni, campo-testo-del-codice). La prima volta chiede il codice e lo salva in iCloud;
-    poi rilegge sempre il file, senza variabili intermedie."""
+    """Ritorna (azioni, campo-testo-del-codice). L'azione Testo va messa per prima: la domanda la indica con ActionIndex 0."""
     if TOKEN:
         return [], text(TOKEN)
-    fid, cb, ask, g, fid2 = U(), U(), U(), U(), U()
-    acts = [
-        act("is.workflow.actions.documentpicker.open", {"UUID": fid, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": False, "WFShowFilePicker": False}),
-        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 101,
-            "WFInput": {"Type": "Variable", "Variable": var_attach(fid, "File")}}),
-        act("is.workflow.actions.getclipboard", {"UUID": cb}),
-        act("is.workflow.actions.ask", {"UUID": ask, "WFInputType": "Text",
-            "WFAskActionPrompt": "Codice personale di Keepo (app → Altro → Siri e widget → Copia codice)",
-            "WFAskActionDefaultAnswer": var_text(cb, "Clipboard")}),
-        act("is.workflow.actions.documentpicker.save", {"WFInput": var_attach(ask, "Provided Input"), "WFAskWhereToSave": False,
-            "WFFileDestinationPath": CODE_PATH, "WFSaveFileOverwrite": True}),
-        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 2, "UUID": U()}),
-        act("is.workflow.actions.documentpicker.open", {"UUID": fid2, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": True, "WFShowFilePicker": False}),
-    ]
-    return acts, var_text(fid2, "File")
+    tid = U()
+    return [act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": text("")})], var_text(tid, "Text")
 
-def forget_bad_code(msg_uuid):
-    """Se il server dice che il codice non vale più, cancella quello salvato: la prossima volta lo richiede.
-    Usa una ricerca di testo + "Se … ha un valore" (la condizione "contiene" non viene importata bene)."""
+def import_questions(actions):
     if TOKEN: return []
-    g, mid, fid = U(), U(), U()
-    return [
-        act("is.workflow.actions.text.match", {"UUID": mid, "WFMatchTextPattern": "Codice non valido", "WFMatchTextCaseSensitive": False,
-            "text": var_text(msg_uuid, "Dictionary Value")}),
-        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 0, "WFCondition": 100,
-            "WFInput": {"Type": "Variable", "Variable": var_attach(mid, "Matches")}}),
-        act("is.workflow.actions.documentpicker.open", {"UUID": fid, "WFGetFilePath": CODE_PATH, "WFFileErrorIfNotFound": False, "WFShowFilePicker": False}),
-        act("is.workflow.actions.file.delete", {"WFInput": var_attach(fid, "File"), "WFDeleteFileConfirmDeletion": False}),
-        act("is.workflow.actions.conditional", {"GroupingIdentifier": g, "WFControlFlowMode": 2, "UUID": U()}),
-    ]
+    assert actions[0]["WFWorkflowActionIdentifier"] == "is.workflow.actions.gettext"
+    return [{"ActionIndex": 0, "Category": "Parameter", "DefaultValue": "", "ParameterKey": "WFTextActionText", "Text": CODE_PROMPT}]
 
 def request(rid, fn, body):
     return act("is.workflow.actions.downloadurl", {
@@ -73,7 +49,6 @@ def request(rid, fn, body):
 def show_message(rid):
     vid = U()
     return [act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFGetDictionaryValueType": "Value", "WFDictionaryKey": "messaggio"}),
-            *forget_bad_code(vid),
             act("is.workflow.actions.showresult", {"Text": var_text(vid, "Dictionary Value")})]
 
 def movement(kind):
@@ -114,10 +89,11 @@ def income_from_email():
     raw = {"Value": {"string": "\uFFFC;\uFFFC", "attachmentsByRange": {
               "{0, 1}": {"OutputUUID": m1, "Type": "ActionOutput", "OutputName": "Matches"},
               "{2, 1}": {"OutputUUID": m2, "Type": "ActionOutput", "OutputName": "Matches"}}}, "WFSerializationType": "WFTextTokenString"}
-    return [act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": shortcut_input}),
+    return [*code_acts,
+            act("is.workflow.actions.gettext", {"UUID": tid, "WFTextActionText": shortcut_input}),
             act("is.workflow.actions.text.match", {"UUID": m1, "WFMatchTextPattern": INCOME_RE, "WFMatchTextCaseSensitive": False, "text": var_text(tid, "Text")}),
             act("is.workflow.actions.text.match", {"UUID": m2, "WFMatchTextPattern": BANKS_RE, "WFMatchTextCaseSensitive": False, "text": var_text(tid, "Text")}),
-            *code_acts, request(rid, "quick_income", [("p_token", code), ("p_raw", raw)]),
+            request(rid, "quick_income", [("p_token", code), ("p_raw", raw)]),
             act("is.workflow.actions.getvalueforkey", {"UUID": vid, "WFInput": var_attach(rid, "Contents of URL"), "WFGetDictionaryValueType": "Value", "WFDictionaryKey": "messaggio"}),
             act("is.workflow.actions.notification", {"WFNotificationActionTitle": "Keepo", "WFNotificationActionBody": var_text(vid, "Dictionary Value"), "WFNotificationActionSound": False})]
 
@@ -130,8 +106,8 @@ def workflow(actions, glyph, color, takes_input=False):
     return {
         "WFWorkflowClientVersion": "2605.0.5", "WFWorkflowMinimumClientVersion": 900, "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowIcon": {"WFWorkflowIconStartColor": color, "WFWorkflowIconGlyphNumber": glyph},
-        "WFWorkflowImportQuestions": [],
-        "WFWorkflowTypes": ["NCWidget", "WatchKit"] if not takes_input else [], "WFWorkflowInputContentItemClasses": ["WFStringContentItem", "WFRichTextContentItem", "WFEmailAddressContentItem", "WFGenericFileContentItem"] if takes_input else [],
+        "WFWorkflowImportQuestions": import_questions(actions),
+        "WFWorkflowTypes": ["NCWidget", "WatchKit", "MenuBar"] if not takes_input else [], "WFWorkflowInputContentItemClasses": ["WFStringContentItem", "WFRichTextContentItem", "WFEmailAddressContentItem", "WFGenericFileContentItem"] if takes_input else [],
         "WFWorkflowHasShortcutInputVariables": takes_input, "WFWorkflowHasOutputFallback": False,
         "WFQuickActionSurfaces": [], "WFWorkflowOutputContentItemClasses": [],
         "WFWorkflowActions": actions}

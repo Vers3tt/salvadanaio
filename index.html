@@ -243,6 +243,21 @@ a.row{color:inherit;text-decoration:none}
 .balance .big{margin-bottom:6px}
 .delta{margin:0 0 4px;color:var(--ink2);font-size:14px}
 .delta b{font-weight:600}
+.dues-line{display:flex;align-items:center;gap:5px}
+.dues-line b{color:var(--green)}
+.duerow{padding-right:12px;gap:8px}
+.duerow .dmain{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;min-height:62px}
+.duerow .t small.late{color:var(--neg)}
+.duerow .darr{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1.5px currentColor}
+.duerow .darr.in{color:var(--green)}
+.duerow .darr.out{color:var(--ink)}
+.duerow .darr:active{background:currentColor}
+.duerow .darr:active svg{color:var(--card)}
+.sec-h .link{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.sec-note svg{vertical-align:-2px}
+.owe{margin:0 0 12px}
+.owe>.link{display:inline-flex;align-items:center;gap:5px;font-size:14.5px;padding:4px 4px}
+.owe .fields{margin-top:6px}
 .bchart{margin:18px 0 14px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .bchart-plot{position:relative;height:120px;margin-right:0}
 .bchart-plot svg{display:block;width:100%;height:100%;overflow:visible}
@@ -253,6 +268,26 @@ a.row{color:inherit;text-decoration:none}
 .ylab{position:absolute;right:0;font-size:11px;color:var(--ink3);background:var(--card);padding-left:4px;line-height:1}
 .ylab.top{top:-14px}.ylab.bot{bottom:-14px}
 .bchart-x{display:flex;justify-content:space-between;color:var(--ink3);font-size:11.5px;margin-top:18px}
+.bchart-x{position:relative;margin-top:10px}
+.bx-today{position:absolute;transform:translateX(-50%);color:var(--ink2);font-weight:600}
+.bmark{position:absolute;pointer-events:none;transition:opacity .15s}
+.bmark i{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--card);box-shadow:0 0 0 1.5px var(--ink2);transform:translate(-50%,-50%)}
+.bmark em{position:absolute;transform:translateX(-50%);font-style:normal;font-size:10.5px;color:var(--ink2);white-space:nowrap;background:var(--card);padding:0 3px;border-radius:4px}
+.bmark.hi em{bottom:6px}.bmark.lo em{top:6px}
+.bproj{display:flex;align-items:center;gap:5px;margin:10px 0 0;font-size:13px;color:var(--ink2)}
+.bproj span{flex:1;min-width:0}.bproj b{color:var(--ink);font-weight:600;white-space:nowrap}.bproj b.neg{color:var(--neg)}
+.mavg{position:absolute;left:0;right:44px;border-top:1.5px dashed var(--neg);opacity:.75;pointer-events:none;z-index:1}
+.mavg span{position:absolute;right:0;top:-15px;font-size:10px;color:var(--neg);background:var(--card);padding:0 3px;border-radius:3px}
+.donut-card{display:flex;align-items:center;gap:18px;padding:16px;margin-bottom:10px}
+.donut{position:relative;width:118px;height:118px;flex:none}
+.donut svg{width:100%;height:100%;display:block}
+.donut circle{transition:stroke-dasharray .5s ease}
+.donut-c{position:absolute;inset:0;display:grid;place-content:center;text-align:center;line-height:1.15}
+.donut-c small{font-size:11.5px;color:var(--ink2)}.donut-c b{font-size:17px;font-weight:700}
+.donut-leg{display:grid;gap:8px;flex:1;min-width:0;font-size:14px}
+.donut-leg span{display:flex;align-items:center;gap:8px;min-width:0}
+.donut-leg i{width:10px;height:10px;border-radius:3px;flex:none}
+.donut-leg b{margin-left:auto;font-weight:600}
 .next{padding-top:12px;border-top:1px solid var(--line)}
 
 /* monthly bars */
@@ -288,7 +323,7 @@ a.row{color:inherit;text-decoration:none}
 .ctop b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctop span{font-weight:600;white-space:nowrap}
 .cbar{height:4px;border-radius:2px;background:var(--fill);overflow:hidden}
-.cbar i{display:block;height:100%;background:var(--ink);border-radius:2px}
+.cbar i{display:block;height:100%;background:var(--cc,var(--ink));border-radius:2px}
 .cpct{width:36px;text-align:right;font-size:13px;color:var(--ink2);flex:none}
 
 /* search */
@@ -591,6 +626,13 @@ button.crow{width:100%;text-align:left}
 .achip{display:inline-flex;align-items:center;background:var(--card);border-radius:999px;padding:7px 12px;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
 .achip[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);box-shadow:none}
 .mov-accs{margin:0 0 12px}
+#movChips .mov-accs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -16px 10px;padding:0 16px}
+#movChips .mov-accs::-webkit-scrollbar{display:none}
+#movChips .achip,#movChips .accs-l,#movChips .link{flex:none;white-space:nowrap}
+.achip .cnt{margin-left:6px;font-size:12px;color:var(--ink3);font-weight:600}
+.achip[aria-pressed="true"] .cnt{color:inherit;opacity:.7}
+.mov-clear{display:inline-flex;align-items:center;gap:4px;margin:0 0 12px;font-size:14px}
+@media (min-width:900px){#movChips .mov-accs{flex-wrap:wrap;overflow:visible;margin:0 0 10px;padding:0}}
 .sheet #accs{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px 10px;padding:0 16px 2px;scrollbar-width:none}
 .sheet #accs::-webkit-scrollbar{display:none}
 .sheet #accs .achip{flex:none}
@@ -636,6 +678,16 @@ button.crow{width:100%;text-align:left}
 .scanbtn{display:flex;align-items:center;gap:6px;font-size:15px!important}
 .worktime{display:flex;justify-content:center;align-items:center;gap:5px;margin-top:6px;font-size:13.5px;color:var(--ink2);min-height:18px}
 .sheet #scanMsg{margin:0 4px 8px;text-align:center}
+.sitems{margin:0 0 12px;background:var(--fill);border-radius:12px;padding:10px 12px}
+.sitems summary{font-size:14px;font-weight:600;cursor:pointer;color:var(--ink)}
+.sitems-l{display:grid;margin-top:8px;max-height:220px;overflow:auto}
+.sitem{display:flex;align-items:center;gap:10px;padding:7px 2px;font-size:14px;text-align:left;width:100%}
+.sitem+.sitem{border-top:1px solid var(--line)}
+.sitem .sn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sitem .sbox{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;box-shadow:inset 0 0 0 1.5px var(--ink3);color:transparent;flex:none}
+.sitem[aria-pressed="true"] .sbox{background:var(--ink);box-shadow:none;color:var(--on-ink)}
+.sitem[aria-pressed="false"] .sn,.sitem[aria-pressed="false"] .num{color:var(--ink3);text-decoration:line-through}
+.sitems .hint{margin:8px 0 0}
 .payrow{display:flex;gap:8px;align-items:center;background:var(--card);border-radius:10px;padding:6px 6px 6px 12px;margin-bottom:6px}
 .payrow select{flex:1;min-width:0;border:0;background:none;font:inherit;color:var(--ink);padding:6px 0;-webkit-appearance:none;appearance:none}
 .payrow .paylabel{flex:1;color:var(--ink2)}
