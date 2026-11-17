@@ -441,6 +441,7 @@ function render() {
   </div>
   <div class="side-foot" id="sideFoot"></div></div>`;
   syncBadge();
+  maybeTour();
 }
 function setTab(t) { if (t !== tab) editHome = false; tab = t; try { sessionStorage.setItem(LS + ".tab", t); } catch {} render(); window.scrollTo(0, 0); }
 
@@ -700,7 +701,7 @@ function txRow(t) {
   </button>`;
 }
 
-let movQuery = "", movAcc = "", movCat = "", movNote = "", movMoreNotes = false;
+let movQuery = "", movAcc = "", movCat = "", movNote = "";
 // "Conad", " conad  " e "CONAD" sono la stessa cosa: minuscole, senza accenti, spazi ridotti
 const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 const squash = s => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
@@ -733,17 +734,23 @@ function countBy(list, key) {
   // the spelling you used most is the one shown
   return [...m.values()].map(e => ({ ...e, label: Object.entries(e.spell).sort((a, b) => b[1] - a[1])[0][0] })).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
 }
+// three compact drop-down menus instead of rows of buttons: a pill that shows the choice, with the
+// native picker under it (the wheel on iPhone, a menu on the Mac). Each option says how many movements it has.
 function movChips() {
-  const chip = (attr, val, on, label, n, dot = "") => `<button class="achip" ${attr}="${esc(val)}" aria-pressed="${on}">${dot}${esc(label)}${n != null ? `<span class="cnt num">${n}</span>` : ""}</button>`;
+  const pill = (key, label, value, opts) => {
+    const on = !!value, cur = opts.find(o => o.v === value);
+    return `<label class="fpill${on ? " on" : ""}"><span class="fpl">${esc(on && cur ? cur.l : label)}</span>${ic("chevD", 14)}
+      <select data-mf="${key}" aria-label="${esc(label)}">${[{ v: "", l: label === "Conto" ? "Tutti i conti" : label === "Categoria" ? "Tutte le categorie" : "Tutte le note" }, ...opts]
+        .map(o => `<option value="${esc(o.v)}"${o.v === value ? " selected" : ""}>${esc(o.l)}${o.n != null ? ` (${o.n})` : ""}</option>`).join("")}</select></label>`;
+  };
   const accs = accounts(), accList = movBase("acc");
-  const accRow = accs.length ? `<div class="accs mov-accs" role="group" aria-label="Conto">${chip("data-macc", "", !movAcc, "Tutti i conti", null)}${accs.map(a => ({ a, n: accList.filter(t => t.account === a.id).length })).filter(x => x.n || movAcc === x.a.id).map(({ a, n }) => chip("data-macc", a.id, movAcc === a.id, a.name, n, `<i class="adot" style="background:${a.color}"></i>`)).join("")}</div>` : "";
-  const cats = countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; });
-  const catRow = cats.length > 1 || movCat ? `<div class="accs mov-accs" role="group" aria-label="Categoria"><span class="accs-l">Categoria</span>${cats.map(c => chip("data-mcat", c.k, movCat === c.k, c.k, c.n)).join("")}</div>` : "";
-  const notes = countBy(movBase("note"), t => { const n = norm(t.note); return n ? [n, t.note.trim().replace(/\s+/g, " ")] : null; }).filter(x => x.n > 1 || x.k === movNote);
-  const shown = movMoreNotes ? notes : notes.slice(0, 8);
-  const noteRow = notes.length ? `<div class="accs mov-accs" role="group" aria-label="Nota"><span class="accs-l">Note</span>${shown.map(x => chip("data-mnote", x.k, movNote === x.k, x.label, x.n)).join("")}${notes.length > 8 ? `<button class="link" data-mnote-more>${movMoreNotes ? "Meno" : `Altre ${notes.length - 8}`}</button>` : ""}</div>` : "";
+  const accOpts = accs.map(a => ({ v: a.id, l: a.name, n: accList.filter(t => t.account === a.id).length })).filter(o => o.n || o.v === movAcc);
+  const catOpts = countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; }).map(c => ({ v: c.k, l: c.k, n: c.n }));
+  const noteOpts = countBy(movBase("note"), t => { const n = norm(t.note); return n ? [n, t.note.trim().replace(/\s+/g, " ")] : null; })
+    .filter(x => x.n > 1 || x.k === movNote).map(x => ({ v: x.k, l: x.label, n: x.n }));
   const any = movAcc || movCat || movNote;
-  return accRow + catRow + noteRow + (any ? `<button class="link mov-clear" data-mclear>${ic("close", 14)}Togli i filtri</button>` : "");
+  return `<div class="fpills">${accs.length ? pill("acc", "Conto", movAcc, accOpts) : ""}${pill("cat", "Categoria", movCat, catOpts)}${noteOpts.length || movNote ? pill("note", "Nota", movNote, noteOpts) : ""}
+    ${any ? `<button class="fclear" data-mclear aria-label="Togli i filtri">${ic("close", 14)}</button>` : ""}</div>`;
 }
 function movSummary() {
   const l = movFiltered(), inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
@@ -805,6 +812,7 @@ function moreScreen() {
   return `
   <header class="nav"><div><h1>Altro</h1></div>${mascot()}</header>
   <a class="card guide-link" href="guida/" target="_blank" rel="noopener">${ic("receipt", 22)}<span><b>Guida all'uso</b><small>Come funziona Keepo, in due minuti</small></span>${ic("chevR", 16)}</a>
+  <button class="card guide-link" data-more="tour">${ic("layout", 22)}<span><b>Rivedi il giro dell'app</b><small>Ti mostro di nuovo a cosa serve ogni parte</small></span>${ic("chevR", 16)}</button>
   <div class="group-h"><span>Account</span></div>
   <div class="list">
     ${cloud ? `<div class="cell"><span>Email</span><span>${esc(DEMO ? "giulia@esempio.it" : session?.user?.email || "")}</span></div>
@@ -927,7 +935,7 @@ function renderLogin() {
     if ($("#lForgot")) $("#lForgot").onclick = async () => {
       const email = $("#lEmail").value.trim();
       if (!/.+@.+\..+/.test(email)) { authMsg("Scrivi la tua email qui sopra, poi tocca di nuovo Password dimenticata."); $("#lEmail").focus(); return; }
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: appUrl() });
       authMsg(error ? italianAuthError(error) : "Ti ho mandato un'email con il link per scegliere una nuova password.", !error);
     };
     $("#lLocal").onclick = () => { S.mode = "local"; save(); render(); };
@@ -936,9 +944,18 @@ function renderLogin() {
       e.preventDefault();
       const email = $("#lEmail").value.trim(), password = $("#lPass").value;
       $("#lGo").disabled = true; authMsg("");
-      const { data, error } = signup ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+      // the confirmation link must come back to this page (not to the Site URL set in Supabase)
+      const { data, error } = signup ? await sb.auth.signUp({ email, password, options: { emailRedirectTo: appUrl() } }) : await sb.auth.signInWithPassword({ email, password });
       $("#lGo").disabled = false;
-      if (error) { authMsg(italianAuthError(error)); return; }
+      if (error) {
+        authMsg(italianAuthError(error));
+        if (/not confirmed/i.test(error.message || "")) $("#lErr").insertAdjacentHTML("beforeend", ` <button class="link" type="button" id="lResend">Mandami di nuovo l'email</button>`);
+        const rs = $("#lResend"); if (rs) rs.onclick = async () => {
+          const { error: e2 } = await sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: appUrl() } });
+          authMsg(e2 ? italianAuthError(e2) : "Email mandata di nuovo. Apri il link dal telefono o dal computer dove usi Keepo.", !e2);
+        };
+        return;
+      }
       if (signup && !data.session) { const email = $("#lEmail").value; signup = false; draw(); $("#lEmail").value = email; authMsg("Account creato. Apri l'email che ti è arrivata e conferma l'indirizzo, poi accedi qui.", true); return; }
     };
   };
@@ -949,12 +966,15 @@ function authMsg(text, ok = false) {
   const el = $("#lErr"); if (!el) return;
   el.textContent = text; el.classList.toggle("ok", ok);
 }
+// where links in Keepo's emails must lead: this page, without ?demo or other parameters
+const appUrl = () => location.origin + location.pathname.replace(/index\.html$/, "");
 function italianAuthError(e) {
   const m = String(e.message || "");
   if (/invalid login/i.test(m)) return "Email o password sbagliate.";
   if (/not confirmed/i.test(m)) return "Devi prima confermare l'email dal link che ti è arrivato.";
   if (/already registered/i.test(m)) return "Esiste già un account con questa email: accedi.";
   if (/signups not allowed/i.test(m)) return "La registrazione di nuovi account è disattivata.";
+  if (/rate limit|too many|security purposes/i.test(m)) return "Troppe richieste in poco tempo: aspetta un minuto e riprova.";
   if (isNetErr(e)) return "Sei offline. Collegati a internet per accedere.";
   return m;
 }
@@ -1129,6 +1149,7 @@ function txSheet(type, existing) {
       box.onclick = e => { const b = e.target.closest("[data-si]"); if (!b) return; const i = +b.dataset.si; off.has(i) ? off.delete(i) : off.add(i); paint(); };
       paint();
     };
+    if (DEMO) window.__demoReceipt = r => { $("#scanItems").innerHTML = ""; scanItems(r); };
     sh.addEventListener("keydown", e => {
       if (e.target.tagName === "INPUT") { if (e.key === "Enter") { e.preventDefault(); $("#txSave").click(); } return; }
       if (/^[0-9]$/.test(e.key)) key(e.key);
@@ -1662,6 +1683,65 @@ function onboardingAction(a) {
   setTab("home"); mascotReact("jump");
 }
 
+/* ============ guida dinamica ============ */
+// A short walk over the real Home the first time the app opens (and from Altro → Rivedi la guida):
+// one element at a time is lit up, the rest is dimmed, and a bubble says what it is for.
+const TOUR = [
+  { sel: ".card.balance", tab: "home", t: "Il tuo saldo", d: "Qui vedi quanto hai. Il grafico mostra com'è andata e, tratteggiato, dove arrivi nei prossimi 30 giorni." },
+  { sel: ".actions", tab: "home", t: "Una spesa? Due tocchi", d: "Tocca Uscita o Entrata, scrivi l'importo e scegli la categoria. Dallo stesso pannello puoi fotografare lo scontrino." },
+  { sel: '[data-w="dues"]', tab: "home", t: "Soldi in arrivo", d: "Una vendita su Vinted, un amico che ti deve la cena: li segni qui e non contano nel saldo. Quando arrivano tocchi la spunta." },
+  { sel: '[data-w="cats"]', tab: "home", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria. Tocca una riga per darti un budget: Keepo ti avvisa prima di sforarlo." },
+  { sel: '.tabbar [data-tab="mov"]', t: "Tutti i movimenti", d: "Li cerchi per nota o negozio e li filtri per conto e categoria con i menu sotto la ricerca." },
+  { sel: '.tabbar [data-tab="goals"]', t: "Cosa vuoi comprarti?", d: "Aggiungi un obiettivo con nome e prezzo, anche incollando il link del prodotto. Tutto il saldo lo fa avanzare." },
+  { sel: '.tabbar [data-tab="more"]', t: "Siri, Watch e il resto", d: "In Altro ci sono conti, budget, i Comandi Rapidi per Siri e il Centro di Controllo. E questa guida, se vuoi rivederla." }
+];
+let tourOn = false, tourAsked = false;
+function maybeTour() {
+  if (tourAsked || tourOn || S.settings.tourDone || needsOnboarding() || closeSheet || editHome || tab !== "home") return;
+  if (DEMO && !new URLSearchParams(location.search).has("tour")) return;
+  tourAsked = true; setTimeout(() => { if (!closeSheet && tab === "home") startTour(); }, 700);
+}
+function startTour() {
+  if (tourOn) return; tourOn = true;
+  const steps = TOUR.filter(st => st.tab !== "home" || !homeLayout().hidden.includes((st.sel.match(/data-w="(\w+)"/) || [])[1]));
+  let k = 0;
+  const L = document.createElement("div"); L.className = "tour"; L.setAttribute("role", "dialog"); L.setAttribute("aria-modal", "true"); L.setAttribute("aria-label", "Guida di Keepo");
+  L.innerHTML = `<div class="tour-hole"></div><div class="tour-tip" tabindex="-1"></div>`;
+  document.body.appendChild(L);
+  const hole = L.querySelector(".tour-hole"), tip = L.querySelector(".tour-tip");
+  const end = done => { tourOn = false; L.remove(); removeEventListener("resize", place); removeEventListener("scroll", place); document.removeEventListener("keydown", key, true); if (done) saveSettings({ tourDone: true }); };
+  function place() {
+    const el = document.querySelector(steps[k].sel); if (!el) return;
+    const r = el.getBoundingClientRect(), pad = 8, vw = innerWidth, vh = innerHeight;
+    Object.assign(hole.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + pad * 2 + "px", height: r.height + pad * 2 + "px" });
+    const w = Math.min(340, vw - 32), th = tip.offsetHeight || 170;
+    let top = r.bottom + pad + 12; if (top + th > vh - 12) top = Math.max(12, r.top - pad - 12 - th);
+    if (top + th > vh - 12) top = Math.max(12, vh - th - 12);   // tall element: the bubble sits on it, at the bottom
+    const left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2));
+    Object.assign(tip.style, { width: w + "px", left: left + "px", top: top + "px" });
+  }
+  function show() {
+    const st = steps[k];
+    if (st.tab && tab !== st.tab) setTab(st.tab);
+    const el = document.querySelector(st.sel);
+    if (!el) { if (k < steps.length - 1) { k++; return show(); } return end(true); }
+    if (!st.sel.startsWith(".tabbar")) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    tip.innerHTML = `<div class="tour-top"><span class="tour-n">${k + 1} di ${steps.length}</span><button class="tour-skip" data-tour="skip">Salta</button></div>
+      <b class="tour-t">${esc(st.t)}</b><p class="tour-d">${esc(st.d)}</p>
+      <div class="tour-btns">${k ? `<button class="tour-back" data-tour="back" aria-label="Indietro">${ic("chevL", 18)}</button>` : ""}<button class="save small" data-tour="next">${k === steps.length - 1 ? "Inizia a usare Keepo" : "Avanti"}</button></div>`;
+    place(); setTimeout(place, 380); setTimeout(place, 800); tip.focus({ preventScroll: true });
+  }
+  function key(e) {
+    if (e.key === "Escape") { e.preventDefault(); end(true); }
+    else if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); go(1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
+  }
+  function go(d) { k += d; if (k < 0) k = 0; if (k >= steps.length) { end(true); mascotReact("jump"); return; } show(); }
+  L.addEventListener("click", e => { const b = e.target.closest("[data-tour]"); if (!b) return; const a = b.dataset.tour; a === "skip" ? end(true) : go(a === "back" ? -1 : 1); });
+  addEventListener("resize", place); addEventListener("scroll", place, { passive: true }); document.addEventListener("keydown", key, true);
+  show();
+}
+
 /* ============ account ============ */
 function passwordSheet(recovery) {
   sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${recovery ? "Nuova password" : "Cambia password"}</h3><span></span></div>
@@ -1718,7 +1798,7 @@ const isStandalone = () => matchMedia("(display-mode: standalone)").matches || n
 let iconSteps = false;
 function iconNotice() {
   let v = ICON_VERSION; try { v = +(localStorage.getItem(LS + ".iconv") || ICON_VERSION); } catch {}
-  if (!isStandalone() || v >= ICON_VERSION) return "";
+  if (DEMO || !isStandalone() || v >= ICON_VERSION) return "";
   const cloud = S.mode === "cloud";
   return `<div class="card notice"><img src="icons/icon-192.png" alt="" width="44" height="44">
     <div><b>Nuovo nome e nuova icona</b><span>Sulla schermata Home vedi ancora quelli vecchi: iOS non li aggiorna da solo.</span>
@@ -1769,7 +1849,11 @@ function demoScene() {
     home: () => setTab("home"),
     conti: () => { showAccounts = true; setTab("home"); },
     uscita: () => { setTab("home"); txSheet("out"); setTimeout(() => { keys("12,50"); document.querySelector('[data-cat="Ristoranti"]')?.click(); fill(0, "#txNote", "Pizza con amici"); }, 60); },
-    scontrino: () => { setTab("home"); txSheet("out"); setTimeout(() => { keys("23,47"); document.querySelector('[data-cat="Spesa"]')?.click(); fill(0, "#txNote", "Conad Superstore"); const m = $("#scanMsg"); if (m) { m.textContent = "Letto: totale 23,47 €, negozio, data, categoria Spesa. Controlla e salva."; m.className = "peek ok"; } }, 60); },
+    scontrino: () => { setTab("home"); txSheet("out"); setTimeout(() => { keys("16,68"); document.querySelector('[data-cat="Spesa"]')?.click(); fill(0, "#txNote", "Conad Superstore"); const m = $("#scanMsg"); if (m) { m.textContent = "Letto: totale 16,68 €, negozio, data, categoria Spesa. Controlla e salva."; m.className = "peek ok"; }
+      window.__demoReceipt?.({ total: 1668, items: [["Latte Granarolo 1l", 149], ["Pane comune", 210], ["Biscotti Mulino", 299], ["Detersivo Dash", 690], ["Mele Golden", 320]].map(([name, amount]) => ({ name, amount })), itemsMatch: true }); }, 60); },
+    daricevere: () => { setTab("home"); setTimeout(() => { const w = document.querySelector('[data-w="dues"]'); if (w) window.scrollTo(0, w.getBoundingClientRect().top + scrollY - 70); }, 120); },
+    arrivati: () => { setTab("home"); setTimeout(() => { const d = dues().find(x => x.id === "d-due1"); if (d) dueDoneSheet(d); }, 120); },
+    filtri: () => { setTab("mov"); movCat = "Spesa"; render(); },
     movimenti: () => setTab("mov"),
     obiettivi: () => setTab("goals"),
     obiettivo: () => { setTab("goals"); goalSheet("d-cuffie"); },
@@ -2638,10 +2722,6 @@ document.addEventListener("click", e => {
     if (e.target.closest("[data-acc-toggle]")) { showAccounts = !showAccounts; try { localStorage.setItem(LS + ".showacc", showAccounts ? "1" : ""); } catch {} render(); return; }
     if (e.target.closest("[data-acc-manage]")) { accountsSheet(); return; }
     if (e.target.closest("[data-transfer]")) { transferSheet(); return; }
-    const ma = e.target.closest("[data-macc]"); if (ma) { movAcc = ma.dataset.macc; render(); return; }
-    const mc = e.target.closest("[data-mcat]"); if (mc) { movCat = movCat === mc.dataset.mcat ? "" : mc.dataset.mcat; render(); return; }
-    const mn = e.target.closest("[data-mnote]"); if (mn) { movNote = movNote === mn.dataset.mnote ? "" : mn.dataset.mnote; render(); return; }
-    if (e.target.closest("[data-mnote-more]")) { movMoreNotes = !movMoreNotes; render(); return; }
     if (e.target.closest("[data-mclear]")) { movAcc = movCat = movNote = ""; render(); return; }
   }
   if (e.target.closest("[data-check]") && !e.target.closest(".sheet")) { checkSheet(); return; }
@@ -2689,6 +2769,7 @@ document.addEventListener("click", e => {
     else if (a === "export") exportBackup();
     else if (a === "budgets") budgetSheet();
     else if (a === "recurring") recurringSheet();
+    else if (a === "tour") { setTab("home"); setTimeout(startTour, 350); }
     else if (a === "dues") { const L = homeLayout(); if (L.hidden.includes("dues")) { L.hidden = L.hidden.filter(k => k !== "dues"); saveLayout(L); } setTab("home"); setTimeout(() => document.querySelector('[data-w="dues"]')?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }
     else if (a === "password") passwordSheet(false);
     else if (a === "delete") deleteAccountSheet();
@@ -2703,6 +2784,11 @@ document.addEventListener("pointermove", e => { const c = e.target.closest("[dat
 document.addEventListener("pointerdown", e => { const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
 document.addEventListener("pointerdown", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); });
 document.addEventListener("pointerout", e => { const c = e.target.closest("[data-chart=balance]"); if (c && !c.contains(e.relatedTarget)) chartLeave(c); });
+document.addEventListener("change", e => {
+  const f = e.target.closest("[data-mf]"); if (!f) return;
+  if (f.dataset.mf === "acc") movAcc = f.value; else if (f.dataset.mf === "cat") movCat = f.value; else movNote = f.value;
+  render();
+});
 document.addEventListener("input", e => {
   if (e.target.id === "movQ") { movQuery = e.target.value; $("#movList").innerHTML = movList(); $("#movSum").innerHTML = movSummary(); $("#movChips").innerHTML = movChips(); }
 });

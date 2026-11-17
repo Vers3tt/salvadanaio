@@ -1,7 +1,7 @@
 """Monta le clip della guida (guida/clip/*.mp4) dalle registrazioni reali del simulatore iOS.
 Stile: colori pieni del marchio che si alternano con una tendina, scritte grandi che entrano riga per riga,
 la "telecamera" che segue il telefono (avvicinamenti, leggera inclinazione), tocchi come nelle registrazioni di iOS.
-Uso: CLIP_SRC=/cartella/registrazioni python3 design/build_clips.py [nome ... | guida]
+Uso: CLIP_SRC=/cartella/registrazioni python3 design/build_clips.py [nome ... | guida]  (registrazioni dal simulatore: design/simulatore/LEGGIMI.md)
 ("guida" rifà guida/keepo-guida.mp4 dalla registrazione di design/record_video.mjs)
 (registrazioni: mp4 a 30 fps, larghe 600 px, dello schermo dell'iPhone da 402x874 punti)"""
 import os, sys, math, re, subprocess
@@ -271,6 +271,103 @@ def render_guide():
     enc.stdin.close(); enc.wait()
     print("keepo-guida", f"{L + TAIL:.1f}s", os.path.getsize(out) // 1024, "KB")
 
+# ============ dal simulatore iOS: registrazione + cronologia del copione (rec/autopilot.js) ============
+# SIM_SRC=/cartella con <nome>.mov e <nome>.json  ->  guida/keepo-guida.mp4 ("guida") o guida/clip/<nome>.mp4
+SIM_BEATS = {
+  "saldo": (["Il tuo saldo."], "Con la previsione dei prossimi 30 giorni."),
+  "uscita": (["Una spesa?", "Due tocchi."], "E se qualcuno ti deve una parte, lo segni."),
+  "entrata": (["Anche", "le entrate."], None),
+  "daricevere": (["Soldi", "in arrivo?"], "Vinted, un amico: contano quando arrivano."),
+  "conti": (["Ogni conto,", "il suo totale."], "Hype, Revolut, contanti…"),
+  "categorie": (["Dove vanno", "i soldi?"], "Categorie e budget del mese."),
+  "movimenti": (["Trovi", "tutto."], "Filtri per categoria, negozio e conto."),
+  "obiettivi": (["Cosa vuoi", "comprarti?"], "Tutto il saldo fa avanzare gli obiettivi."),
+  "prezzo": (["Il prezzo,", "giorno per giorno."], "Keepo ti dice quando conviene."),
+  "nuovo": (["Nuovo", "obiettivo."], "Nome, prezzo e link del prodotto."),
+  "keepo": (["Keepo", "ti parla."], "Tocca la monetina per un consiglio."),
+  "siri": (["Siri, Watch,", "barra dei menu."], "Segna senza aprire l'app."),
+  "Da ricevere": (["Soldi", "in arrivo?"], "Vinted, un amico che ti deve la cena."),
+  "Arrivati": (["Arrivati?", "Una spunta."], "Diventano un'entrata sul conto giusto."),
+  "Fine": (["Fatto."], "Il saldo è già aggiornato."),
+}
+
+def sim_source(name):
+    """Simulator .mov (variable frame rate, full resolution) -> constant 30 fps, 600 px wide, like the other recordings."""
+    src, mp4 = os.path.join(SRC, name + ".mov"), os.path.join(SRC, name + "-30.mp4")
+    if not os.path.exists(mp4) or os.path.getmtime(mp4) < os.path.getmtime(src):
+        subprocess.run([FF, "-loglevel", "error", "-y", "-i", src, "-vf", "fps=30,scale=600:-2:flags=lanczos", "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p", mp4], check=True)
+    return mp4
+
+def sim_sync(mp4):
+    """The script covers the web view in black and removes it at t=0 of its log. Returns the time of the first
+    frame without it and where the web view starts on screen (in points), measured on the black cover."""
+    top, seen = None, False
+    for t, im in frames_from(mp4):
+        L = im.convert("L"); w, h = L.size
+        rows = [sum(L.getpixel((x, y)) for x in range(0, w, 10)) / len(range(0, w, 10)) for y in range(0, h, 2)]
+        blk = [y * 2 for y, v in enumerate(rows) if v < 8]
+        if len(blk) > h / 4:
+            seen = True; top = blk[-1] * PT_W / w   # bottom of the page; minus its height (H in the log) gives where y=0 is
+        elif seen: return t, top
+    return 0., 0.
+
+def render_sim(name):
+    import json
+    TL = json.load(open(os.path.join(SRC, name + ".json"))); log = TL["log"]
+    mp4 = sim_source(name); t_sync, top = sim_sync(mp4)
+    END = next(e["t"] for e in log if e["type"] == "end"); L = END; TAIL = 3.0 if name == "guida" else 1.4; total = int((L + TAIL) * FPS)
+    # the page logged y + its own guess of the bar height; the black cover says where the page really is
+    # (Safari draws the cover also under the status bar, so measure from its bottom edge)
+    dy = (top - TL["H"]) - TL.get("off", 0) if top else 0
+    taps = [(e["t"], e["x"], e["y"] + dy) for e in log if e["type"] == "tap"]
+    moves = [(e["t"], e["t"] + e["dur"]) for e in log if e["type"] in ("swipe", "drag")]
+    chaps = [(e["t"], e["title"]) for e in log if e["type"] == "chap" and e["title"] in SIM_BEATS]
+    beats_src = [(t, *SIM_BEATS[c]) for t, c in chaps]
+    if name == "guida": beats_src.append((L, ["Prova Keepo."], "vers3tt.github.io/salvadanaio"))
+    if not beats_src: beats_src = [(0, ["Keepo."], None)]
+    n = len(beats_src); cols = [LIGHT if i % 2 == 0 else NAVY for i in range(n)]; cols[-1] = NAVY
+    if n > 1 and cols[-2] == NAVY: cols[-2] = LIGHT
+    beats = [dict(t=t, bg=cols[i], T=beat_type(lines, sub, cols[i])) for i, (t, lines, sub) in enumerate(beats_src)]
+    beats[0]["t"] = 0
+    src = frames_from(mp4); cur_t, cur = next(src); nxt = next(src, None)
+    sw, sh = cur.size; k = sw / PT_W
+    PH_IMG, OFF, SMASK, ph_h = build_phone(sw, sh); s0 = 900 / ph_h
+    out = os.path.join(ROOT, "guida", "keepo-guida.mp4") if name == "guida" else os.path.join(ROOT, "guida", "clip", name + ".mp4")
+    enc = subprocess.Popen([FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "24", "-preset", "slow", "-movflags", "+faststart", out], stdin=subprocess.PIPE)
+    z, fy = 1.0, .5
+    for kk in range(total):
+        t = kk / FPS; ts = min(t, L); vt = ts + t_sync
+        while nxt is not None and nxt[0] <= vt: cur_t, cur = nxt; nxt = next(src, None)
+        scr = cur.convert("RGBA"); touches(scr, taps, ts)
+        near = [(y * k, abs(ts - tt)) for tt, x, y in taps if abs(ts - tt) < 1.3]
+        moving = any(a - .2 <= ts <= b + .3 for a, b in moves)
+        tz = 1.0 if (moving or not near or t >= L) else 1.22
+        tfy = (sum(y / (dd + .3) for y, dd in near) / sum(1 / (dd + .3) for y, dd in near)) / sh if near and not moving else .5
+        z += (tz - z) * .05; fy += (min(.82, max(.18, tfy)) - fy) * .05
+        i = max(j for j, b in enumerate(beats) if b["t"] <= t + 1e-6); b = beats[i]
+        fr = Image.new("RGBA", (W, H), (*(beats[i - 1]["bg"] if i else b["bg"]), 255))
+        wu = ease((t - b["t"]) / .42) if i else 1
+        if wu > 0: ImageDraw.Draw(fr).rectangle([0, int(H * (1 - wu)), W, H], fill=b["bg"])
+        ph = PH_IMG.copy(); ph.paste(scr, (OFF, OFF), SMASK)
+        pt = t - b["t"]; punch = .035 * math.sin(math.pi * clamp(pt / .4)) if i else 0
+        outro = ease((t - L) / 1.2) if name == "guida" else 0
+        s = s0 * z * (1 + punch) * (1 - .12 * outro)
+        intro = back(t / .8, 1.1); rot = math.radians(1.1 * math.sin(t * .8) + 8 * (1 - ease(t / .8)) - 4 * outro)
+        Fx, Fy = OFF + .5 * sw, OFF + fy * sh
+        Tx = W / 2 + 6 * math.sin(t * .5)
+        Ty = max(845 - (z - 1) * 170, 430 + (Fy - (OFF - 14)) * s) + 7 * math.sin(t * 1.1) + (1 - intro) * 760 + 140 * outro
+        a_, bb = math.cos(rot) / s, math.sin(rot) / s; d_, e = -math.sin(rot) / s, math.cos(rot) / s
+        fr.alpha_composite(ph.transform((W, H), Image.AFFINE, (a_, bb, Fx - (a_ * Tx + bb * Ty), d_, e, Fy - (d_ * Tx + e * Ty)), resample=Image.BICUBIC))
+        fg = b["T"]["fg"] if wu > .5 else (INK if (beats[i - 1]["bg"] if i else b["bg"]) == LIGHT else WHITE)
+        ImageDraw.Draw(fr).text((W - 44, 62), "Keepo", font=font(26, 700), fill=fg, anchor="rs")
+        nxt_t = beats[i + 1]["t"] if i + 1 < n else 1e9
+        draw_type(fr, b["T"], t - b["t"] - (.14 if i else .25), clamp((t - (nxt_t - .24)) / .24))
+        enc.stdin.write(fr.convert("RGB").tobytes())
+    enc.stdin.close(); enc.wait()
+    print(name, f"{L + TAIL:.1f}s", f"sync {t_sync:.2f}s", os.path.getsize(out) // 1024, "KB")
+
 if __name__ == "__main__":
     for nm in (sys.argv[1:] or [*CLIPS, "guida"]):
-        render_guide() if nm == "guida" else render(nm)
+        if os.path.exists(os.path.join(SRC, nm + ".mov")): render_sim(nm)
+        else: render_guide() if nm == "guida" else render(nm)

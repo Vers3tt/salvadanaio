@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Guida a Keepo</title>
-<meta name="description" content="Come usare Keepo: entrate e uscite in pochi tocchi, conti, obiettivi con il prezzo dal link, Siri e Apple Pay.">
+<meta name="description" content="Come usare Keepo: entrate e uscite in pochi tocchi, soldi da ricevere, conti, obiettivi con il prezzo dal link, Siri e Apple Pay.">
 <link rel="icon" type="image/png" href="../icons/icon-192.png">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <style>
@@ -42,14 +42,11 @@ h1{font-family:var(--font-d);font-size:clamp(32px,6vw,52px);letter-spacing:-.035
 /* player */
 .player{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:40px;align-items:center;background:var(--card);border-radius:28px;padding:34px}
 @media (max-width:820px){.player{grid-template-columns:1fr;gap:22px;padding:22px 16px}}
-.phone{position:relative;width:100%;max-width:300px;margin:0 auto;aspect-ratio:390/844;border-radius:48px;background:#0B0F1A;padding:12px;box-shadow:0 30px 60px -30px rgba(10,20,50,.55),inset 0 0 0 2px #2A3045}
+.phone{position:relative;width:100%;max-width:300px;margin:0 auto;aspect-ratio:402/874;border-radius:48px;background:#0B0F1A;padding:12px;box-shadow:0 30px 60px -30px rgba(10,20,50,.55),inset 0 0 0 2px #2A3045}
 .screen{position:relative;width:100%;height:100%;border-radius:37px;overflow:hidden;background:var(--bg)}
-.screen img{position:absolute;top:6%;left:0;width:100%;height:94%;object-fit:cover;object-position:top;opacity:0;transition:opacity .55s ease}
-.sbar{position:absolute;top:0;left:0;right:0;height:6%;display:flex;align-items:center;justify-content:space-between;padding:0 9% 0 13%;font:600 13px/1 var(--font);color:#111C38;z-index:2;background:#F3F5F9}
-.sbar i{width:42px;height:11px;background:linear-gradient(90deg,#111C38 0 46%,transparent 46% 56%,#111C38 56%);-webkit-mask:linear-gradient(#000 0 0);border-radius:3px;opacity:.85}
+.screen img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;opacity:0;transition:opacity .55s ease}
 .screen img.on{opacity:1;animation:kb 6.5s ease-out both}
 @keyframes kb{from{transform:scale(1.035)}to{transform:scale(1)}}
-.notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:32%;height:22px;border-radius:12px;background:#0B0F1A;z-index:3}
 .tap{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;z-index:4;pointer-events:none;opacity:0}
 .tap.on{animation:tap 1.6s ease-out .9s 2}
 .tap::before,.tap::after{content:"";position:absolute;inset:0;border-radius:50%}
@@ -101,6 +98,7 @@ summary{cursor:pointer;font-weight:600;font-size:16px;list-style:none;display:fl
 summary::after{content:"+";color:var(--ink2);font-weight:400;font-size:20px;line-height:1}
 details[open] summary::after{content:"−"}
 details p{margin:10px 0 0;color:var(--ink2);line-height:1.55;font-size:15.5px}
+.faq-clip{display:block;width:min(260px,100%);margin:14px auto 0;border-radius:16px;aspect-ratio:9/16;background:#0B0F1A}
 footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
 @media (prefers-reduced-motion:reduce){.screen img.on,.tap.on,.caption.fade{animation:none}.bars button.cur i{animation:none;transform:scaleX(1)}}
 </style>
@@ -125,7 +123,7 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
   </section>
 
   <div class="player" id="player">
-    <div class="phone" aria-hidden="true"><div class="screen" id="screen"><div class="sbar"><span>9:41</span><i></i></div><div class="notch"></div><span class="tap" id="tap"></span></div></div>
+    <div class="phone" aria-hidden="true"><div class="screen" id="screen"><span class="tap" id="tap"></span></div></div>
     <div class="side">
       <div class="bars" id="bars"></div>
       <div class="caption" id="caption" aria-live="polite"></div>
@@ -145,7 +143,7 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
     <div class="needs">
       <div class="need"><span class="tag ok">Indispensabile</span><b>iPhone, Android o un computer</b><p>Apri <b>vers3tt.github.io/salvadanaio</b>. Su iPhone usa Safari → Condividi → Aggiungi alla schermata Home; su Mac, Safari → File → Aggiungi al Dock.</p></div>
       <div class="need"><span class="tag ok">Consigliato</span><b>Un account Keepo</b><p>Email e password: i dati restano sincronizzati tra telefono e computer e non li perdi se cambi dispositivo. Senza account restano solo su quel dispositivo.</p></div>
-      <div class="need"><span class="tag">Facoltativo</span><b>Comandi Rapidi di Apple</b><p>Per segnare spese con Siri, dai widget, dal Centro di Controllo, dall'Apple Watch e in automatico con Apple Pay. Li trovi in Altro → Siri e widget.</p></div>
+      <div class="need"><span class="tag">Facoltativo</span><b>Comandi Rapidi di Apple</b><p>Per segnare spese con Siri, dal Centro di Controllo, dall'Apple Watch, dalla barra dei menu del Mac e in automatico con Apple Pay. Li trovi in Altro → Siri e widget.</p></div>
       <div class="need"><span class="tag">Facoltativo</span><b>Fotocamera</b><p>Per leggere gli scontrini. La foto viene letta sul telefono e non viene inviata a nessuno.</p></div>
       <div class="need"><span class="tag">Facoltativo</span><b>Internet</b><p>Serve per sincronizzare, leggere i prezzi dai link e la prima lettura di uno scontrino. Puoi segnare spese anche offline: si inviano appena torni online.</p></div>
     </div>
@@ -156,6 +154,8 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
     <details><summary>I miei dati sono al sicuro?</summary><p>Ogni account vede solo i propri dati: le regole del database lo impediscono a chiunque altro. Keepo non si collega alla tua banca e non chiede dati della carta. Puoi esportare un backup o eliminare l'account in qualsiasi momento da Altro.</p></details>
     <details><summary>Come funziona il saldo degli obiettivi?</summary><p>Tutto il saldo conta per ogni obiettivo: se hai 300 € e un obiettivo da 279 €, è raggiunto. Quando premi "L'ho comprato" Keepo segna l'uscita (anche divisa tra più conti) e gli altri obiettivi si aggiornano.</p></details>
     <details><summary>Come legge il prezzo dal link?</summary><p>Quando incolli il link di un prodotto Keepo apre la pagina e legge prezzo, nome e foto. Poi la ricontrolla ogni mattina e costruisce il grafico: ti dice quando il prezzo è il più basso visto. Alcuni siti bloccano la lettura automatica: in quel caso lo scrivi tu.</p></details>
+    <details><summary>Aspetto dei soldi da Vinted, come li segno?</summary><video class="faq-clip" src="clip/daricevere.mp4" muted loop playsinline autoplay preload="metadata" aria-label="Video: si segna una vendita su Vinted da ricevere e poi si tocca la spunta quando arriva"></video><p>In Home, nel riquadro Da ricevere, tocca Aggiungi: importo, da chi e su quale conto arriveranno. Non entrano nel saldo finché non tocchi la spunta. Se Vinted paga meno per le commissioni, scrivi quanto è arrivato e per il resto scegli "Non arrivano".</p></details>
+    <details><summary>Un amico mi deve una parte della cena</summary><p>Quando segni l'uscita tocca "Qualcuno ti deve una parte?" e scrivi quanto e chi. La sua parte finisce in Da ricevere, e quando te la ridà tocchi la spunta.</p></details>
     <details><summary>Ho pagato con due conti, come lo segno?</summary><p>Apri il movimento e tocca "Dividi tra più conti": scrivi quanto è uscito da ogni conto, il resto va da solo senza conto. Per spostare soldi tra conti (es. una ricarica di Hype) usa "Sposta tra conti": non conta come entrata o uscita.</p></details>
     <details><summary>Sulla schermata Home vedo ancora il vecchio nome o la vecchia icona</summary><p>iOS non aggiorna nome e icona delle app web. Elimina l'app dalla schermata Home e aggiungila di nuovo da Safari: se hai un account, i dati restano.</p></details>
     <details><summary>Keepo è gratis?</summary><p>Sì. In futuro alcune funzioni avanzate, come il collegamento automatico dei conti bancari, potrebbero far parte di un abbonamento Premium facoltativo. Quello che usi oggi resta gratuito.</p></details>
@@ -166,20 +166,21 @@ footer{margin-top:50px;color:var(--ink3);font-size:13px;text-align:center}
 
 <script>
 (() => {
-  // x,y = where the tap animation points, in % of the screen (null = no tap)
+  // screenshots from the iOS simulator (iPhone, real status bar); x,y = where the tap points, in % of the screen (null = no tap)
   const STEPS = [
-    { img: "home", ch: "Inizio", t: "Il tuo saldo, a colpo d'occhio", d: "La Home mostra quanto hai, come è cambiato e quanto manca al prossimo obiettivo. Scegli il periodo del grafico: 1 mese, 3, 6 o un anno.", how: "Tocca <b>Uscita</b> o <b>Entrata</b> per segnare un movimento.", x: 27, y: 64 },
-    { img: "uscita", ch: "Movimenti", t: "Una spesa in tre tocchi", d: "Scrivi l'importo con il tastierino, scegli la categoria e il conto. Keepo ti dice anche quanto lavoro ti costa.", how: "Importo → <b>categoria</b> → <b>Aggiungi uscita</b>. Con <b>Ripeti</b> la rendi mensile (affitto, abbonamenti).", x: 12, y: 33.5 },
-    { img: "scontrino", ch: "Scontrino", t: "Oppure fotografa lo scontrino", d: "Keepo legge totale, negozio, data e indovina la categoria. La lettura avviene sul telefono: la foto non va da nessuna parte.", how: "Nel pannello del movimento tocca <b>Scontrino</b>, in alto a destra.", x: 86, y: 5.5 },
-    { img: "conti", ch: "Conti", t: "Ogni conto con il suo saldo", d: "Conto corrente, Hype, Revolut, contanti: assegna ogni movimento a un conto e vedi quanto c'è su ognuno.", how: "In Home tocca <b>Vedi per conto</b>. I conti si creano in Altro → <b>Conti</b>.", x: 22, y: 31 },
+    { img: "home", ch: "Inizio", t: "Il tuo saldo, a colpo d'occhio", d: "La Home mostra quanto hai, come è cambiato e quanto manca al prossimo obiettivo. La linea tratteggiata è la previsione dei prossimi 30 giorni, con i ricorrenti e i soldi che aspetti.", how: "Tocca <b>Uscita</b> o <b>Entrata</b> per segnare un movimento.", x: 26.4, y: 76.2 },
+    { img: "uscita", ch: "Movimenti", t: "Una spesa in tre tocchi", d: "Scrivi l'importo con il tastierino, scegli la categoria e il conto. Keepo ti dice anche quanto lavoro ti costa.", how: "Importo → <b>categoria</b> → <b>Aggiungi uscita</b>. Con <b>Ripeti</b> la rendi mensile (affitto, abbonamenti).", x: 11.9, y: 40.8 },
+    { img: "scontrino", ch: "Scontrino", t: "Oppure fotografa lo scontrino", d: "Keepo legge totale, negozio, data e le righe dei prodotti. Se qualcosa non è tuo togli la spunta e l'importo si abbassa. La foto resta sul telefono.", how: "Nel pannello del movimento tocca <b>Scontrino</b>, in alto a destra.", x: 84.5, y: 13.2 },
+    { img: "daricevere", ch: "Da ricevere", t: "I soldi che aspetti", d: "Una vendita su Vinted, un amico che ti deve la cena: li segni qui e non contano nel saldo finché non arrivano. Ci metti anche quelli che devi dare tu.", how: "In Home, riquadro <b>Da ricevere</b> → <b>Aggiungi</b>. Quando arrivano tocca la spunta e scegli il conto.", x: 88.6, y: 25.7 },
+    { img: "conti", ch: "Conti", t: "Ogni conto con il suo saldo", d: "Conto corrente, Hype, Revolut, contanti: assegna ogni movimento a un conto e vedi quanto c'è su ognuno.", how: "In Home tocca <b>Vedi per conto</b>. I conti si creano in Altro → <b>Conti</b>.", x: 27.4, y: 39.8 },
     { img: "trasferimento", ch: "Trasferimenti", t: "Sposta soldi tra conti", d: "Una ricarica da conto corrente a Hype non è né un'entrata né un'uscita: il totale non cambia e i grafici restano puliti.", how: "Vedi per conto → <b>Sposta tra conti</b>. Se un acquisto l'hai pagato con due conti, aprilo e tocca <b>Dividi tra più conti</b>.", x: null },
-    { img: "movimenti", ch: "Lista", t: "Tutto in ordine, mese per mese", d: "Cerca per nota o categoria, filtra entrate, uscite e singoli conti. Tocca un movimento per modificarlo.", how: "Scheda <b>Movimenti</b>, in basso.", x: 77, y: 27 },
-    { img: "budget", ch: "Budget", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria. Con un budget Keepo ti avvisa all'80% e quando lo superi.", how: "Tocca <b>Budget</b> per impostare un tetto di spesa al mese.", x: 50, y: 46 },
-    { img: "obiettivi", ch: "Obiettivi", t: "Metti da parte per ciò che vuoi", d: "Ogni obiettivo si confronta con tutto il tuo saldo. Vedi la percentuale, quanto ti costa in giorni di lavoro e la data da rispettare.", how: "Scheda <b>Obiettivi</b> → <b>+</b>.", x: 24, y: 20 },
-    { img: "nuovoobiettivo", ch: "Link", t: "Incolla il link, al resto pensa Keepo", d: "Da Amazon e da molti negozi Keepo legge prezzo, nome e foto del prodotto. Tu controlli e salvi.", how: "Nuovo obiettivo → incolla il <b>link al prodotto</b>.", x: 50, y: 35 },
-    { img: "prezzo", ch: "Prezzi", t: "Compra al momento giusto", d: "Ogni mattina Keepo ricontrolla il prezzo e disegna il grafico: ti dice quando è il più basso visto o se conviene aspettare.", how: "Apri l'obiettivo e guarda il riquadro <b>Prezzo</b>. Con <b>L'ho comprato</b> segni l'acquisto.", x: 62, y: 45 },
-    { img: "keepo", ch: "Keepo", t: "Keepo ti tiene d'occhio", d: "La moneta in alto ti dice le cose importanti: budget quasi finiti, prezzi in calo, quanto manca a un obiettivo, i pagamenti in arrivo.", how: "Tocca <b>Keepo</b>, poi il fumetto per il messaggio successivo.", x: 89, y: 6 },
-    { img: "siri", ch: "Siri", t: "Con Siri, i widget e Apple Pay", d: "\"Ehi Siri, Uscita Keepo\", un widget sulla schermata Home, il Centro di Controllo, l'Apple Watch. E ogni pagamento Apple Pay segnato da solo.", how: "Altro → <b>Siri, widget e Comandi Rapidi</b>: genera il codice e aggiungi i comandi.", x: 50, y: 34.5 },
+    { img: "filtri", ch: "Lista", t: "Trovi subito quello che cerchi", d: "Cerca per nota, categoria o conto: maiuscole, spazi e accenti non contano. I menu Conto, Categoria e Nota elencano solo quello che hai davvero, con accanto quanti movimenti ci sono.", how: "Scheda <b>Movimenti</b>, poi apri un menu sotto la ricerca. La <b>×</b> toglie i filtri.", x: 38.0, y: 33.2 },
+    { img: "budget", ch: "Budget", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria, con la ciambella che mostra il totale. Con un budget Keepo ti avvisa all'80% e quando lo superi.", how: "Tocca <b>Budget</b> per impostare un tetto di spesa al mese.", x: 50.0, y: 59.1 },
+    { img: "obiettivi", ch: "Obiettivi", t: "Metti da parte per ciò che vuoi", d: "Ogni obiettivo si confronta con tutto il tuo saldo. Vedi la percentuale, quanto ti costa in giorni di lavoro e la data da rispettare.", how: "Scheda <b>Obiettivi</b> → <b>+</b>.", x: 73.6, y: 36.9 },
+    { img: "nuovoobiettivo", ch: "Link", t: "Incolla il link, al resto pensa Keepo", d: "Da Amazon e da molti negozi Keepo legge prezzo, nome e foto del prodotto. Tu controlli e salvi.", how: "Nuovo obiettivo → incolla il <b>link al prodotto</b>.", x: 53.5, y: 43.6 },
+    { img: "prezzo", ch: "Prezzi", t: "Compra al momento giusto", d: "Ogni mattina Keepo ricontrolla il prezzo e disegna il grafico: ti dice quando è il più basso visto o se conviene aspettare.", how: "Apri l'obiettivo e guarda il riquadro <b>Prezzo</b>. Con <b>L'ho comprato</b> segni l'acquisto.", x: 50.0, y: 46.4 },
+    { img: "keepo", ch: "Keepo", t: "Keepo ti tiene d'occhio", d: "La moneta in alto ti dice le cose importanti: budget quasi finiti, prezzi in calo, quanto manca a un obiettivo, i pagamenti in arrivo.", how: "Tocca <b>Keepo</b>, poi il fumetto per il messaggio successivo.", x: 90.3, y: 13.4 },
+    { img: "siri", ch: "Siri", t: "Con Siri, i widget e Apple Pay", d: "\"Ehi Siri, Uscita Keepo\", un widget sulla schermata Home, il Centro di Controllo, l'Apple Watch. E ogni pagamento Apple Pay segnato da solo.", how: "Altro → <b>Siri, widget e Comandi Rapidi</b>: genera il codice, poi aggiungi i comandi e incollalo quando te lo chiedono.", x: 50.0, y: 41.3 },
     { img: "altro", ch: "Altro", t: "Il resto è in Altro", d: "Conti, budget, movimenti ricorrenti, quanto ti costa davvero, backup e le novità in arrivo: tocca Mi interessa su quelle che vuoi.", how: "Scheda <b>Altro</b>, in basso a destra.", x: null }
   ];
   const DUR = 7000;
