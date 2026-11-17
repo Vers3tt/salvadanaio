@@ -69,6 +69,7 @@ const P = {
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   cloudOff: '<path d="m3 3 18 18"/><path d="M8.2 6.2A6 6 0 0 1 16.4 10h.6a4 4 0 0 1 3.2 6.4M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  percent: '<circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/><path d="M19 5 5 19"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M4 3.5v5h5M20 20.5v-5h-5"/>'
 };
 const ic = (name, size = 22) => `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name]}</svg>`;
@@ -149,15 +150,15 @@ function mascotLines() {
     else if (spent >= b * .8) add(85, `Hai usato il ${Math.round(spent / b * 100)}% del budget ${cat}: restano ${money(b - spent)}.`);
   }
   // goals
-  const ready = D.active.filter(g => g.price <= D.total);
+  const ready = D.active.filter(g => g.price <= goalHave(g));
   if (ready.length) add(80, ready.length === 1 ? `Hai abbastanza per ${ready[0].name}. Quando vuoi, è tuo.` : `Hai abbastanza per ${ready.length} obiettivi. Quale prendi per primo?`);
   for (const g of D.active) {
     if (g.last_price && g.last_price < g.price) add(90, `Buone notizie: ${g.name} ora costa ${money(g.last_price)}, ${money(g.price - g.last_price)} in meno.`);
-    if (g.deadline && g.price > D.total) { const plan = deadlinePlan(g); if (plan) add(60, `${g.name}: ${plan.charAt(0).toLowerCase() + plan.slice(1)}.`); }
+    if (g.deadline && g.price > goalHave(g)) { const plan = deadlinePlan(g); if (plan) add(60, `${g.name}: ${plan.charAt(0).toLowerCase() + plan.slice(1)}.`); }
   }
-  const next = D.active.find(g => g.price > D.total);
+  const next = D.active.find(g => g.price > goalHave(g));
   if (next) {
-    const left = next.price - D.total, months = D.perMonth > 0 ? Math.ceil(left / D.perMonth) : 0;
+    const left = next.price - goalHave(next), months = D.perMonth > 0 ? Math.ceil(left / D.perMonth) : 0;
     add(70, `Mancano ${money(left)} per ${next.name}.` + (months && months <= 36 ? ` Al tuo ritmo ci arrivi ${months <= 1 ? "entro un mese" : `in circa ${months} mesi`}.` : ""));
   }
   if (!D.active.length) add(40, "Dammi un obiettivo: cosa vuoi comprarti? Tutto il saldo lo fa avanzare.");
@@ -222,7 +223,7 @@ function mascotSay(btn) {
 
 const CATS = {
   out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
-  in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Altro","dots"]]
+  in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Interessi","percent"],["Altro","dots"]]
 };
 const TRANSFER = "Trasferimento";
 const isTransfer = t => t.cat === TRANSFER;
@@ -360,7 +361,7 @@ async function sync() {
     }
     firstSyncDone = true;
     S.lastSync = Date.now(); save(); render();
-    runRecurring();
+    runRecurring(); runInterest();
   } catch (e) {
     console.warn("sync", e);
   } finally { syncing = false; syncBadge(); }
@@ -394,12 +395,19 @@ function derive() {
   return { txs, total, active, done, mIn, mOut, perMonth };
 }
 let D = derive();
-const goalPct = g => Math.max(0, Math.min(100, D.total / g.price * 100));
+// Money set aside for one goal (settings.goalSaved = { goalId: cents }). It is not a movement: it stays in the
+// balance, but it counts only for its goal. What is not set aside still counts for every goal, as before.
+const goalSaved = () => S.settings.goalSaved || {};
+const savedFor = g => Math.max(0, goalSaved()[g.id] || 0);
+const allocated = () => Object.entries(goalSaved()).reduce((a, [id, v]) => a + (S.goals[id] && !S.goals[id].done ? Math.max(0, v) : 0), 0);
+const freeBalance = () => Math.max(0, D.total - allocated());
+const goalHave = g => savedFor(g) + freeBalance();
+const goalPct = g => Math.max(0, Math.min(100, goalHave(g) / g.price * 100));
 const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "il sito"; } };
 const fmtDate = (d, opt = { day: "numeric", month: "long", year: "numeric" }) => new Date(d).toLocaleDateString("it-IT", opt);
 function deadlinePlan(g) {
   if (!g.deadline) return "";
-  const left = g.price - D.total;
+  const left = g.price - goalHave(g);
   const end = new Date(g.deadline + "T23:59:59");
   const days = (end - Date.now()) / DAY;
   const when = fmtDate(end, { day: "numeric", month: "short", year: end.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined });
@@ -409,7 +417,7 @@ function deadlinePlan(g) {
   return `Per arrivarci entro ${[1, 8, 11].includes(end.getDate()) ? "l'" : "il "}${when} ti servono ${money(Math.ceil(left / months / 100) * 100)} al mese`;
 }
 function eta(g) {
-  const left = g.price - D.total;
+  const left = g.price - goalHave(g);
   if (left <= 0) return "Hai abbastanza soldi: puoi comprarlo quando vuoi";
   if (D.perMonth <= 0) return "Mancano " + money(left);
   const m = Math.ceil(left / D.perMonth);
@@ -456,8 +464,8 @@ const RANGES = [[30, "1M"], [90, "3M"], [180, "6M"], [365, "1A"]];
 const MONTHS_SHORT = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
 
 function homeScreen() {
-  const next = D.active.find(g => g.price > D.total);
-  const ready = D.active.filter(g => g.price <= D.total).length;
+  const next = D.active.find(g => g.price > goalHave(g));
+  const ready = D.active.filter(g => g.price <= goalHave(g)).length;
   const months = monthStats();
   const W = {
     balance: () => `<section class="card balance">
@@ -468,7 +476,8 @@ function homeScreen() {
     ${duesIn().length ? `<p class="delta dues-line">${ic("clock", 13)}<b class="num">+${money(duesTotal(duesIn()))}</b> in arrivo, non ancora nel saldo</p>` : ""}
     ${accountsBlock()}
     ${balanceChart()}
-    <p class="next">${next ? `Mancano <b class="num">${money(next.price - D.total)}</b> per ${esc(next.name)}`
+    ${allocated() ? `<p class="delta set-line">${ic("flag", 13)}di cui <b class="num">${money(allocated())}</b> messi da parte per gli obiettivi</p>` : ""}
+    <p class="next">${next ? `Mancano <b class="num">${money(next.price - goalHave(next))}</b> per ${esc(next.name)}`
       : ready ? `${ready === 1 ? "Hai abbastanza per un obiettivo" : `Hai abbastanza per ${ready} obiettivi`}` : `Aggiungi un obiettivo per vedere quanto ti manca`}</p>
   </section>
   <div class="actions">
@@ -535,6 +544,8 @@ function projectionEvents() {
     let t = r.next_ts, g = 0;
     while (t <= end && g++ < 40) { if (t > now - DAY) ev.push({ t: Math.max(t, now), v: r.type === "in" ? r.amount : -r.amount }); t = advance(t, r.freq); }
   }
+  const nx = new Date(); const firstNext = monthStart(nx.getFullYear(), nx.getMonth() + 1);
+  if (firstNext <= end) { const { b } = accountBalances(); for (const a of accounts()) if (a.rate > 0 && a.autoInt) { const v = monthlyInterest(a, b[a.id] || 0); if (v) ev.push({ t: firstNext, v }); } }
   for (const d of dues()) if (d.due && d.due <= end) ev.push({ t: Math.max(d.due, now), v: d.dir === "out" ? -d.amount : d.amount });
   return ev;
 }
@@ -789,6 +800,7 @@ function goalCard(g) {
     <div class="prog"><i style="width:${pct}%"></i></div>
     <div class="gmeta"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><span class="num">${money(g.price)}</span></div>
     ${workTime(g.price) ? `<div class="gdate">${ic("clock", 14)}<span>${esc(workTime(g.price, true))} di lavoro</span></div>` : ""}
+    ${savedFor(g) ? `<div class="gdate saved">${ic("wallet", 14)}<span>da parte ${esc(money(savedFor(g)))}</span></div>` : ""}
     ${g.deadline ? `<div class="gdate">${ic("calendar", 14)}<span>entro ${esc(fmtDate(g.deadline + "T12:00", { day: "numeric", month: "short" }))}</span></div>` : ""}
     ${g.last_price && g.last_price < g.price ? `<div class="gdate deal">${ic("label", 14)}<span>ora a ${esc(money(g.last_price))}</span></div>` : ""}
   </button>`;
@@ -797,7 +809,7 @@ function goalsScreen() {
   return `
   <header class="nav"><div><h1>Obiettivi</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ic("plus", 20)}</button></div></header>
   ${D.active.length ? `<div class="goal-grid">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo obiettivo</span></button></div>
-    <p class="hint">Ogni obiettivo si confronta con tutto il saldo (${money(D.total)}). Quando ne compri uno il saldo scende e gli altri si aggiornano.</p>`
+    <p class="hint">${allocated() ? `Ogni obiettivo usa i soldi liberi del saldo (${money(freeBalance())}) più quelli che hai messo da parte apposta per lui.` : `Ogni obiettivo si confronta con tutto il saldo (${money(D.total)}).`} Quando ne compri uno il saldo scende e gli altri si aggiornano.</p>`
   : emptyCard("flag", "Nessun obiettivo", "Scrivi cosa vuoi comprare e quanto costa. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
   ${D.done.length ? `<div class="group-h" style="margin-top:28px"><span>Già comprati</span><span>${D.done.length}</span></div>
     <div class="list">${D.done.map(g => `<button class="row" data-goal="${esc(g.id)}">
@@ -1347,7 +1359,7 @@ function goalSheet(id) {
     });
     return;
   }
-  const pct = goalPct(g), ok = pct >= 100, left = Math.max(0, g.price - D.total);
+  const pct = goalPct(g), ok = pct >= 100, left = Math.max(0, g.price - goalHave(g)), saved = savedFor(g);
   sheet(`
     <div class="sheet-h"><button class="l" id="gEdit">Modifica</button><h3></h3><button class="r" data-x>Fine</button></div>
     <div class="detail">
@@ -1355,11 +1367,16 @@ function goalSheet(id) {
       <h2>${esc(g.name)}</h2><p class="sub num">${money(g.price)}</p>
       <div class="dprog${ok ? " ok" : ""}"><span class="num">${ok ? "Raggiunto" : Math.floor(pct) + "%"}</span><div class="prog"><i style="width:${pct}%"></i></div></div>
       <div class="stats3">
-        <div><span>Hai</span><b class="num">${money(Math.max(0, D.total))}</b></div>
+        <div><span>Hai</span><b class="num">${money(goalHave(g))}</b></div>
         <div><span>Prezzo</span><b class="num">${money(g.price)}</b></div>
         <div><span>Mancano</span><b class="num${left ? "" : " pos"}">${left ? money(left) : "0 €"}</b></div>
       </div>
       <p class="eta">${esc(eta(g))}</p>
+      <div class="gsave">
+        <div class="gsave-t"><span>Messi da parte per questo</span><b class="num">${money(saved)}</b>
+          <small>${saved ? `Contano solo qui. Gli altri obiettivi usano il resto del saldo (${esc(money(freeBalance()))}).` : "Tieni dei soldi solo per questo obiettivo: restano nel saldo, ma gli altri non li usano."}</small></div>
+        <div class="gsave-b"><button class="pill sm" id="gsAdd">${ic("plus", 15)}Metti da parte</button>${saved ? `<button class="pill sm" id="gsDel">${ic("minus", 15)}Togli</button>` : ""}</div>
+      </div>
       ${workTime(g.price) ? `<div class="plan">${ic("clock", 18)}<span>Ti costa circa <b>${esc(workTime(g.price))}</b> di lavoro.</span></div>` : ""}
       ${g.deadline && !ok ? `<div class="plan">${ic("calendar", 18)}<span>${esc(deadlinePlan(g))}</span></div>` : ""}
     </div>
@@ -1372,6 +1389,8 @@ function goalSheet(id) {
   `, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     $("#gEdit").onclick = () => goalEditSheet(g);
+    $("#gsAdd").onclick = () => setAsideSheet(g, 1);
+    if ($("#gsDel")) $("#gsDel").onclick = () => setAsideSheet(g, -1);
     if ($("#priceBox")) {
       loadPriceHistory(g.id).then(h => { if ($("#priceBox")) $("#priceBox").innerHTML = priceBox(S.goals[g.id] || g, h); });
       $("#priceBox").addEventListener("click", e => {
@@ -1393,6 +1412,7 @@ function goalSheet(id) {
         const paid = rows.reduce((a, r) => a + r.amount, 0), ts = Date.now();
         close();
         rows.forEach(r => { const t = { id: uuid(), type: "out", amount: r.amount, cat: "Obiettivo", note: g.name, ts, account: r.acc || null }; S.tx[t.id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); });
+        if (savedFor(g)) { const gs = { ...goalSaved() }; delete gs[g.id]; S.settings = { ...S.settings, goalSaved: gs }; enqueue({ op: "up", t: "settings", row: { data: S.settings } }); }
         putGoal({ ...g, price: paid, done: true, done_at: ts });
         toast(rows.length > 1 ? `${g.name} comprato: ${money(paid)} divisi su ${rows.length} conti` : `${g.name} comprato: uscita di ${money(paid)} segnata`);
         snapshotReached();
@@ -1403,7 +1423,7 @@ function goalSheet(id) {
       $("#delBox").innerHTML = `<div class="confirm"><p>Eliminare "${esc(g.name)}"? I movimenti non cambiano.</p>
         <div class="btnrow"><button class="save ghost" id="delNo">Annulla</button><button class="save" style="background:var(--neg);color:#fff" id="delYes">Elimina</button></div></div>`;
       $("#delNo").onclick = () => { $("#delBox").innerHTML = ""; $("#gDel").hidden = false; };
-      $("#delYes").onclick = () => { const c = { ...g }; close(); delGoal(g.id); toast("Obiettivo eliminato", () => putGoal(c)); };
+      $("#delYes").onclick = () => { const c = { ...g }, sv = savedFor(g); close(); if (sv) { const gs = { ...goalSaved() }; delete gs[g.id]; saveSettings({ goalSaved: gs }); } delGoal(g.id); toast("Obiettivo eliminato", () => { putGoal(c); if (sv) saveSettings({ goalSaved: { ...goalSaved(), [c.id]: sv } }); }); };
     };
   });
 }
@@ -1485,6 +1505,33 @@ function recurringSheet() {
       if (p) { const r = S.rec[p.dataset.rpause]; let next = r.next_ts; if (!r.active) while (next <= Date.now()) next = advance(next, r.freq); putRec({ ...r, active: !r.active, next_ts: next }); close(); recurringSheet(); }
       if (d) { const r = { ...S.rec[d.dataset.rdel] }; delRec(r.id); close(); recurringSheet(); toast("Ricorrente eliminato. I movimenti già segnati restano.", () => putRec(r)); }
     });
+  });
+}
+
+/* ============ soldi messi da parte per un obiettivo ============ */
+function setAsideSheet(g, dir) {
+  const saved = savedFor(g), free = freeBalance(), left = Math.max(0, g.price - saved);
+  const max = dir > 0 ? Math.min(free, left || free) : saved;
+  const quick = dir > 0 ? [1000, 5000, 10000].filter(v => v < max).concat(max ? [max] : []) : [saved];
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${dir > 0 ? "Metti da parte" : "Togli"}</h3><button class="r" id="saGo">Fatto</button></div>
+    <p class="hint" style="margin:0 4px 12px">${dir > 0
+      ? `Per ${esc(g.name)}. I soldi non escono dal saldo: li tengo solo per questo obiettivo. Liberi adesso: ${esc(money(free))}.`
+      : `Tornano liberi per tutti gli obiettivi. Ora ne hai ${esc(money(saved))} da parte per ${esc(g.name)}.`}</p>
+    <div class="fields"><div class="field"><label for="saAmt">Importo</label><input id="saAmt" inputmode="decimal" placeholder="0,00" style="text-align:right"></div></div>
+    <div class="accs">${quick.map((v, i) => `<button class="achip" data-sa="${v}">${i === quick.length - 1 && dir > 0 ? (v === left ? "Tutto quello che manca · " : "Tutti i liberi · ") : i === quick.length - 1 ? "Tutti · " : ""}${esc(money(v))}</button>`).join("")}</div>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("click", e => { const b = e.target.closest("[data-sa]"); if (b) $("#saAmt").value = centsToInput(+b.dataset.sa); });
+    setTimeout(() => $("#saAmt")?.focus(), 250);
+    $("#saGo").onclick = () => {
+      const v = Math.min(parseAmt($("#saAmt").value), dir > 0 ? free : saved);
+      if (!v) { toast(dir > 0 && !free ? "Non ci sono soldi liberi da mettere da parte" : "Scrivi l'importo"); return; }
+      const before = saved, after = saved + dir * v;
+      close(); snapshotReached();
+      const gs = { ...goalSaved() }; if (after > 0) gs[g.id] = after; else delete gs[g.id];
+      saveSettings({ goalSaved: gs });
+      toast(dir > 0 ? `${money(v)} da parte per ${g.name}` : `${money(v)} di nuovo liberi`, () => saveSettings({ goalSaved: { ...goalSaved(), [g.id]: before } }));
+      mascotReact(dir > 0 ? "jump" : "squish"); celebrateIfReached();
+    };
   });
 }
 
@@ -2040,7 +2087,7 @@ function autoSheet(focus) {
 
 /* ============ conti ============ */
 const ACC_COLORS = ["#162448", "#2F6FE4", "#0E9F8E", "#18795C", "#E0A100", "#F07A1A", "#D64545", "#7B5CD6", "#7A8193"];
-const ACC_PRESETS = ["Conto corrente", "Hype", "Revolut", "Contanti", "PayPal", "Satispay", "Carta prepagata"];
+const ACC_PRESETS = ["Conto corrente", "Hype", "Revolut", "Trade Republic", "Conto deposito", "Contanti", "PayPal", "Satispay", "Carta prepagata"];
 const accounts = () => S.settings.accounts || [];
 const accById = id => accounts().find(a => a.id === id);
 let showAccounts = false; try { showAccounts = localStorage.getItem(LS + ".showacc") === "1"; } catch {}
@@ -2054,12 +2101,43 @@ function accountBalances() {
   }
   return { b, none };
 }
+/* ---- interessi: conti che rendono, come Trade Republic o un conto deposito ----
+   a.rate = interesse annuo lordo in %, a.tax = tasse in % (in Italia 26), a.autoInt = segnali da soli a inizio mese,
+   a.intFrom = primo mese ancora da accreditare. L'importo è il saldo del conto a fine mese × tasso / 12, al netto delle tasse. */
+const accBalanceAt = (id, ts) => Object.values(S.tx).reduce((s, t) => s + (t.account === id && t.ts < ts ? (t.type === "in" ? t.amount : -t.amount) : 0), 0);
+const monthlyInterest = (a, bal) => a.rate > 0 && bal > 0 ? Math.round(bal * a.rate / 100 / 12 * (1 - (a.tax ?? 26) / 100)) : 0;
+const fmtRate = r => String(Math.round(r * 100) / 100).replace(".", ",") + "%";
+const monthStart = (y, m) => new Date(y, m, 1).getTime();
+let intRunning = false;
+async function runInterest() {
+  if (intRunning || !crypto.subtle) return; intRunning = true;
+  try {
+    let added = 0, changed = false; const now = new Date(), list = accounts().map(a => ({ ...a }));
+    for (const a of list) {
+      if (!(a.rate > 0) || !a.autoInt || !a.intFrom) continue;
+      let d = new Date(a.intFrom), guard = 0;
+      // one credit for each month that is over, dated the 1st of the following month
+      while (monthStart(d.getFullYear(), d.getMonth() + 1) <= now.getTime() && guard++ < 24) {
+        const at = monthStart(d.getFullYear(), d.getMonth() + 1), id = await occurrenceId(a.id + ":interessi", at);
+        const v = monthlyInterest(a, accBalanceAt(a.id, at));
+        if (v > 0 && !S.tx[id]) {
+          const t = { id, type: "in", amount: v, cat: "Interessi", note: `Interessi ${a.name} · ${new Date(at - DAY).toLocaleDateString("it-IT", { month: "long" })}`, ts: at + 9 * 3600e3, account: a.id };
+          S.tx[id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); added++;
+        }
+        d = new Date(at); a.intFrom = at; changed = true;
+      }
+    }
+    if (changed) { S.settings = { ...S.settings, accounts: list }; enqueue({ op: "up", t: "settings", row: { data: S.settings } }); }
+    if (added || changed) commit();
+    if (added) toast(added === 1 ? "Accreditati gli interessi del mese" : `Accreditati ${added} mesi di interessi`);
+  } finally { intRunning = false; }
+}
 function accountsBlock() {
   const accs = accounts();
   if (!accs.length) return `<button class="acc-toggle" data-acc-manage>${ic("wallet", 16)}Dividi il saldo per conto: Hype, Revolut, contanti…</button>`;
   const { b, none } = accountBalances();
   return `<button class="acc-toggle" data-acc-toggle aria-expanded="${showAccounts}">${ic("wallet", 16)}${showAccounts ? "Nascondi i conti" : `Vedi per conto (${accs.length})`}<span class="chev${showAccounts ? " up" : ""}">${ic("chevD", 14)}</span></button>
-    ${showAccounts ? `<div class="acc-list">${accs.map(a => `<div class="acc-row"><i class="adot lg" style="background:${a.color}"></i><span>${esc(a.name)}</span><b class="num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</b></div>`).join("")}
+    ${showAccounts ? `<div class="acc-list">${accs.map(a => `<div class="acc-row"><i class="adot lg" style="background:${a.color}"></i><span>${esc(a.name)}${a.rate > 0 ? `<small class="acc-rate">${ic("percent", 12)}${esc(fmtRate(a.rate))} · circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese</small>` : ""}</span><b class="num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</b></div>`).join("")}
       ${none ? `<div class="acc-row muted"><i class="adot lg" style="background:var(--ink3)"></i><span>Senza conto</span><b class="num">${money(none)}</b></div>` : ""}
       <div class="acc-acts"><button class="link" data-transfer>${ic("transfer", 15)}Sposta tra conti</button><button class="link" data-acc-manage>Gestisci</button></div></div>` : ""}`;
 }
@@ -2069,7 +2147,7 @@ function accountsSheet() {
   sheet(`<div class="sheet-h"><span></span><h3>Conti</h3><button class="r" data-x>Fine</button></div>
     <p class="hint" style="margin:0 4px 12px">Dove tieni i soldi: conto in banca, Hype, Revolut, contanti… Ogni movimento può andare su un conto e vedi il totale di ognuno.</p>
     ${accs.length ? `<div class="list">${accs.map(a => `<button class="row" data-aedit="${esc(a.id)}"><span class="ico" style="background:${a.color}22;color:${a.color}">${ic("wallet", 20)}</span>
-      <span class="t"><b>${esc(a.name)}</b><small>Tocca per modificare</small></span><span class="a num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</span></button>`).join("")}</div>` : ""}
+      <span class="t"><b>${esc(a.name)}</b><small>${a.rate > 0 ? `${esc(fmtRate(a.rate))} annuo · circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese${a.autoInt ? ", segnati da soli" : ""}` : "Tocca per modificare"}</small></span><span class="a num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</span></button>`).join("")}</div>` : ""}
     <button class="save" id="aAdd" style="margin-top:12px">Aggiungi conto</button>
     ${accs.length > 1 ? `<button class="save ghost" id="aMove">${"Sposta soldi tra conti"}</button>` : ""}
     ${accs.length && unassigned ? `<div class="group-h"><span>Movimenti senza conto</span><span class="num">${unassigned} · ${money(none)}</span></div>
@@ -2098,9 +2176,25 @@ function accountEditSheet(existing) {
       ${existing ? "" : `<div class="field"><label for="aStart">Ci sono adesso €</label><input id="aStart" inputmode="decimal" placeholder="0,00" style="text-align:right"></div>`}
     </div>
     ${existing ? "" : `<p class="hint">Se indichi quanto c'è adesso, lo segno come saldo iniziale del conto.</p>`}
+    <div class="group-h"><span>Interessi</span></div>
+    <div class="fields">
+      <div class="field"><label for="aRate">Interesse annuo %</label><input id="aRate" inputmode="decimal" placeholder="nessuno" value="${existing?.rate ? esc(String(existing.rate).replace(".", ",")) : ""}" style="text-align:right"></div>
+      <div class="field"><label for="aTax">Tasse sugli interessi %</label><input id="aTax" inputmode="decimal" value="${esc(String(existing?.tax ?? 26).replace(".", ","))}" style="text-align:right"></div>
+    </div>
+    <label class="terms tgl"><input type="checkbox" id="aAuto" ${existing?.autoInt === false ? "" : "checked"}><span>Segna da solo gli interessi a inizio mese, come entrata su questo conto</span></label>
+    <p class="hint" id="aRateHint"></p>
     <div class="group-h"><span>Colore</span></div>
     <div class="colors" id="aColors"></div>
     ${existing ? `<button class="save danger" id="aDel" style="margin-top:18px">Elimina conto</button><div id="aDelBox"></div>` : ""}`, (sh, close) => {
+    const num = v => { const n = Number(String(v || "").replace(",", ".").replace(/[^\d.]/g, "")); return isFinite(n) ? n : 0; };
+    const hint = () => {
+      const r = num($("#aRate").value), tax = num($("#aTax").value), bal = existing ? accountBalances().b[existing.id] || 0 : parseAmt($("#aStart")?.value);
+      $("#aRateHint").textContent = r > 0
+        ? (bal > 0 ? `Con ${money(bal)} sul conto sono circa ${money(monthlyInterest({ rate: r, tax }, bal))} al mese, ${money(monthlyInterest({ rate: r, tax }, bal) * 12)} in un anno, già tolte le tasse.` : `Al ${fmtRate(r)} lordo, 1.000 € rendono circa ${money(monthlyInterest({ rate: r, tax }, 100000))} al mese dopo le tasse.`)
+        : "Per i conti che pagano interessi, come Trade Republic o un conto deposito. Il tasso lo trovi nell'app della banca.";
+    };
+    sh.addEventListener("input", e => { if (e.target.closest("#aRate,#aTax,#aStart")) hint(); });
+    hint();
     const drawColors = () => $("#aColors").innerHTML = ACC_COLORS.map(c => `<button class="cdot" data-color="${c}" aria-pressed="${c === color}" style="background:${c}" aria-label="Colore"></button>`).join("");
     drawColors();
     sh.querySelector("[data-x]").onclick = close;
@@ -2112,8 +2206,13 @@ function accountEditSheet(existing) {
       const name = $("#aName").value.trim();
       if (!name) { toast("Scrivi il nome del conto"); $("#aName").focus(); return; }
       const list = accounts().slice();
-      if (existing) list[list.findIndex(a => a.id === existing.id)] = { ...existing, name, color };
-      else list.push({ id: uuid(), name, color });
+      const rate = Math.min(20, num($("#aRate").value)), tax = Math.min(100, num($("#aTax").value)), autoInt = $("#aAuto").checked;
+      const n0 = new Date(), thisMonth = monthStart(n0.getFullYear(), n0.getMonth());
+      // interest is credited from the month you turn it on (not for the past)
+      const intFrom = rate > 0 && autoInt ? (existing?.rate > 0 && existing?.autoInt && existing.intFrom ? existing.intFrom : thisMonth) : null;
+      const extra = { rate: rate || null, tax, autoInt: rate > 0 ? autoInt : false, intFrom };
+      if (existing) list[list.findIndex(a => a.id === existing.id)] = { ...existing, name, color, ...extra };
+      else list.push({ id: uuid(), name, color, ...extra });
       const added = existing ? null : list[list.length - 1];
       const start = parseAmt($("#aStart")?.value);
       close(); saveSettings({ accounts: list });
@@ -2827,7 +2926,7 @@ let splashOn = !!document.getElementById("splash"), authHeld = false;
 /* ============ boot ============ */
 if (DEMO) { document.documentElement.classList.add("demo"); const z = +new URLSearchParams(location.search).get("zoom"); if (z) { document.documentElement.style.zoom = z; document.documentElement.classList.add("demo-zoom"); } render(); setTimeout(demoScene, 50); window.__keepo = { txSheet, goalSheet, goalEditSheet, accountsSheet, budgetSheet, siriSheet, wageSheet, transferSheet, splitSheet, recurringSheet, setTab, mascotSay, render }; }
 else if (cfg.supabaseUrl && cfg.supabaseAnonKey && S.mode !== "local") startCloud();
-else { render(); runRecurring(); }
+else { render(); runRecurring(); runInterest(); }
 (function quickFromUrl() {
   const p = new URLSearchParams(location.search), n = p.get("new");
   if (n !== "out" && n !== "in") return;
