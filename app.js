@@ -868,8 +868,7 @@ function moreScreen() {
   ${cloud ? `<div class="list" style="margin-top:22px"><button class="cell danger" data-more="delete"><span>Elimina account e dati</span></button></div>` : ""}
   <div class="about">${logoSvg(56)}<b>Keepo</b><span>I tuoi risparmi, sempre con te</span>
     <span class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></span></div>
-  <input type="file" id="importIn" accept="application/json,.json" hidden>
-  <input type="file" id="sheetIn" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>`;
+`;
 }
 
 // Sync state is shown only when something needs attention: offline or changes still waiting.
@@ -1451,6 +1450,24 @@ async function importBackup(file) {
   } catch { toast("Questo file non è un backup di Keepo"); }
 }
 
+/* Scelta file. Il campo sta fuori da #app: su iPhone la scelta manda la pagina in secondo piano,
+   al rientro parte una sincronizzazione che ridisegna la schermata e un campo dentro #app verrebbe
+   sostituito, perdendo il file. Su iOS niente filtro sui formati: con estensioni che non conosce
+   (.numbers, .ods…) rende i file grigi; il formato lo controlla chi legge il file. */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let pickAt = 0;   // when the last file picker was opened: an update waits for it (see controllerchange)
+function pickFile(accept, onFile) {
+  document.getElementById("filePick")?.remove();
+  pickAt = Date.now();
+  const f = document.createElement("input");
+  f.type = "file"; f.id = "filePick"; if (accept) f.accept = accept;
+  f.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+  f.addEventListener("change", () => { const file = f.files[0]; f.remove(); pickAt = 0; if (file) onFile(file); });
+  f.addEventListener("cancel", () => { f.remove(); pickAt = 0; });
+  document.body.appendChild(f);
+  f.click();
+}
+
 /* ============ import da Excel / CSV di altre app ============ */
 const SUPPORT_EMAIL = window.SALVADANAIO_CONFIG?.supportEmail || "";
 const IMP_FIELDS = [["", "Non importare"], ["date", "Data"], ["amount", "Importo (+/−)"], ["in", "Entrate"], ["out", "Uscite"], ["type", "Tipo (entrata/uscita)"], ["cat", "Categoria"], ["note", "Descrizione"], ["account", "Conto"]];
@@ -1580,6 +1597,7 @@ function impMail(R, ext) {
   return `mailto:${encodeURIComponent(SUPPORT_EMAIL)}?subject=${encodeURIComponent("Keepo: richiesta per l'import da file")}&body=${encodeURIComponent(body)}`;
 }
 async function importSheetFile(file) {
+  if (!/\.(csv|tsv|txt|xlsx|xls|xlsm|ods|numbers)$/i.test(file.name)) { toast("Scegli un file Excel o CSV (.xlsx, .xls, .csv, .ods)"); return; }
   let P;
   try { const rows = await impReadFile(file); P = impGuess(rows); if (!P.body.length) throw 0; }
   catch { toast(/\.numbers$/i.test(file.name) ? "Da Numbers usa Esporta → Excel o CSV e riprova" : "Non riesco a leggere questo file: prova a esportarlo in Excel o CSV"); return; }
@@ -3062,8 +3080,8 @@ document.addEventListener("click", e => {
     else if (a === "auto") autoSheet();
     else if (a === "accounts") accountsSheet();
     else if (a === "wage") wageSheet();
-    else if (a === "sheetimport") { const f = $("#sheetIn"); f.value = ""; f.onchange = () => f.files[0] && importSheetFile(f.files[0]); f.click(); }
-    else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
+    else if (a === "sheetimport") pickFile(IS_IOS ? "" : ".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods,.numbers", importSheetFile);
+    else if (a === "import") pickFile(IS_IOS ? "" : "application/json,.json", importBackup);
   }
 });
 document.addEventListener("pointermove", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
@@ -3128,7 +3146,11 @@ if ("serviceWorker" in navigator && location.protocol !== "file:") {
   const hadController = !!navigator.serviceWorker.controller;
   let reloaded = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    // not while a sheet is open or a file is being picked (iPhone checks for updates when you come back from Files)
+    const go = () => { if (closeSheet || Date.now() - pickAt < 120000) setTimeout(go, 1500); else location.reload(); };
+    go();
   });
   navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
     .then(reg => { reg.update(); document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update(); }); })
