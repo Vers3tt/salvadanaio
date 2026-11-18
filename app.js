@@ -1452,9 +1452,9 @@ async function importBackup(file) {
 
 /* Scelta file. Il campo sta fuori da #app: su iPhone la scelta manda la pagina in secondo piano,
    al rientro parte una sincronizzazione che ridisegna la schermata e un campo dentro #app verrebbe
-   sostituito, perdendo il file. Su iOS niente filtro sui formati: con estensioni che non conosce
-   (.numbers, .ods…) rende i file grigi; il formato lo controlla chi legge il file. */
-const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+   sostituito, perdendo il file. Nessun filtro sui formati, su nessun dispositivo: iPhone, Android,
+   Drive, OneDrive e Dropbox danno spesso tipi o estensioni strani e il filtro rende i file grigi.
+   Il formato lo riconosce chi legge il file, dai primi byte (sniffFile). */
 let pickAt = 0;   // when the last file picker was opened: an update waits for it (see controllerchange)
 function pickFile(accept, onFile) {
   document.getElementById("filePick")?.remove();
@@ -1526,8 +1526,21 @@ function impCsv(text) {
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows;
 }
-async function impReadFile(file) {
-  if (/\.(csv|tsv|txt)$/i.test(file.name) || /csv|plain/.test(file.type)) return impCsv(await file.text());
+// Che file è, dai primi byte e non dal nome: da Android o dal cloud il nome può non avere estensione.
+async function sniffFile(file) {
+  const b = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  const hex = [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+  if (hex.startsWith("504b0304")) return "zip";                 // xlsx, ods, numbers
+  if (hex.startsWith("d0cf11e0")) return "xls";                 // Excel 97-2003
+  if (hex.startsWith("25504446")) return "pdf";
+  if (/^(ffd8ff|89504e47|47494638|52494646)/.test(hex) || /^0000001[48]66747970/.test(hex)) return "image";
+  const head = (await file.slice(0, 2000).text()).replace(/^\ufeff/, "").trimStart();
+  if (head.startsWith("{")) return "json";
+  if (/^<\?xml|^<html|^<table/i.test(head)) return "sheet";     // vecchi export "Excel" in XML/HTML: li legge SheetJS
+  return "text";
+}
+async function impReadFile(file, kind) {
+  if (kind === "text") return impCsv(await file.text());
   await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const sheets = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" }));
@@ -1597,9 +1610,11 @@ function impMail(R, ext) {
   return `mailto:${encodeURIComponent(SUPPORT_EMAIL)}?subject=${encodeURIComponent("Keepo: richiesta per l'import da file")}&body=${encodeURIComponent(body)}`;
 }
 async function importSheetFile(file) {
-  if (!/\.(csv|tsv|txt|xlsx|xls|xlsm|ods|numbers)$/i.test(file.name)) { toast("Scegli un file Excel o CSV (.xlsx, .xls, .csv, .ods)"); return; }
+  const kind = await sniffFile(file).catch(() => "text");
+  if (kind === "json") return importBackup(file);
+  if (kind === "pdf" || kind === "image") { toast(kind === "pdf" ? "I PDF non si possono importare: dall'app esporta in Excel o CSV" : "Questa è una foto: scegli un file Excel o CSV"); return; }
   let P;
-  try { const rows = await impReadFile(file); P = impGuess(rows); if (!P.body.length) throw 0; }
+  try { const rows = await impReadFile(file, kind); P = impGuess(rows); if (!P.body.length) throw 0; }
   catch { toast(/\.numbers$/i.test(file.name) ? "Da Numbers usa Esporta → Excel o CSV e riprova" : "Non riesco a leggere questo file: prova a esportarlo in Excel o CSV"); return; }
   if (P.body.length > 20000) P.body = P.body.slice(0, 20000);
   P.target = lastAccount() || "";
@@ -3080,9 +3095,20 @@ document.addEventListener("click", e => {
     else if (a === "auto") autoSheet();
     else if (a === "accounts") accountsSheet();
     else if (a === "wage") wageSheet();
-    else if (a === "sheetimport") pickFile(IS_IOS ? "" : ".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods,.numbers", importSheetFile);
-    else if (a === "import") pickFile(IS_IOS ? "" : "application/json,.json", importBackup);
+    else if (a === "sheetimport") pickFile("", importSheetFile);
+    else if (a === "import") pickFile("", importBackup);
   }
+});
+// Sul computer: trascina un file Excel, CSV o un backup sulla finestra per importarlo.
+const dragFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+const canImport = () => S.mode && !(S.mode === "cloud" && !session) && !needsOnboarding();
+document.addEventListener("dragover", e => { if (dragFiles(e) && canImport()) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; document.body.classList.add("dropping"); } });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("dropping"); });
+document.addEventListener("drop", e => {
+  document.body.classList.remove("dropping");
+  if (!dragFiles(e) || !canImport()) return;
+  e.preventDefault();
+  const f = e.dataTransfer.files[0]; if (f) importSheetFile(f);   // riconosce da solo anche i backup .json
 });
 document.addEventListener("pointermove", e => { const c = e.target.closest("[data-chart=balance]"); if (c) chartHover(c, e.clientX); const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
 document.addEventListener("pointerdown", e => { const p = e.target.closest("[data-pchart]"); if (p) priceHover(p, e.clientX); });
