@@ -854,6 +854,7 @@ function moreScreen() {
   <p class="foot">Le funzioni Premium faranno parte di un abbonamento opzionale: quello che usi oggi resta gratis.</p>
   <div class="group-h"><span>Backup</span></div>
   <div class="list">
+    <button class="cell btn" data-more="sheetimport"><span>Importa da Excel o da un'altra app</span><span class="cell-sub">CSV, Excel, Numbers ${ic("chevR", 16)}</span></button>
     <button class="cell btn" data-more="export"><span>Esporta backup</span></button>
     <button class="cell btn" data-more="import"><span>Importa backup</span></button>
   </div>
@@ -867,7 +868,8 @@ function moreScreen() {
   ${cloud ? `<div class="list" style="margin-top:22px"><button class="cell danger" data-more="delete"><span>Elimina account e dati</span></button></div>` : ""}
   <div class="about">${logoSvg(56)}<b>Keepo</b><span>I tuoi risparmi, sempre con te</span>
     <span class="legal"><a href="privacy.html" target="_blank" rel="noopener">Privacy</a> · <a href="termini.html" target="_blank" rel="noopener">Termini d'uso</a></span></div>
-  <input type="file" id="importIn" accept="application/json,.json" hidden>`;
+  <input type="file" id="importIn" accept="application/json,.json" hidden>
+  <input type="file" id="sheetIn" accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.ods,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>`;
 }
 
 // Sync state is shown only when something needs attention: offline or changes still waiting.
@@ -1447,6 +1449,190 @@ async function importBackup(file) {
     (d.goals || []).forEach(g => { if (g.id && g.price && !S.goals[g.id]) { S.goals[g.id] = g; enqueue({ op: "up", t: "goals", row: pick(g, COLS.goals) }); n++; } });
     commit(); toast(n ? `Importati ${n} elementi` : "Niente di nuovo da importare");
   } catch { toast("Questo file non è un backup di Keepo"); }
+}
+
+/* ============ import da Excel / CSV di altre app ============ */
+const SUPPORT_EMAIL = window.SALVADANAIO_CONFIG?.supportEmail || "";
+const IMP_FIELDS = [["", "Non importare"], ["date", "Data"], ["amount", "Importo (+/−)"], ["in", "Entrate"], ["out", "Uscite"], ["type", "Tipo (entrata/uscita)"], ["cat", "Categoria"], ["note", "Descrizione"], ["account", "Conto"]];
+const IMP_HEAD = [["cat", /categor|category|tag\b|gruppo/], ["note", /descri|note|causale|memo|dettagl|beneficiar|payee|esercente|merchant|titolo|controparte|oggetto/],
+  ["account", /^conto|account|wallet|portafogl|^banca|^bank/], ["type", /^tipo$|^type$|tipologia|^segno$|entrata\/uscita|in\/out/],
+  ["date", /\bdata\b|date|giorno|^day$|quando/], ["in", /entrat|accredit|avere|income|credit|incass/], ["out", /uscit|addebit|\bdare\b|expense|debit|pagament/],
+  ["amount", /importo|amount|valore|ammontare|somma|totale|^euro$|^eur$|cifra/]];
+const CAT_SYN = {
+  out: [[/spesa|supermerc|aliment|grocer|market/, "Spesa"], [/casa|affitto|mutuo|rent|condomin|arred/, "Casa"],
+    [/bollet|luce|gas\b|acqua|internet|telefon|utilit|abbonament|subscript/, "Bollette"], [/traspor|benzin|carbur|auto\b|treno|bus\b|metro|taxi|parchegg|autostrad|fuel/, "Trasporti"],
+    [/svago|diverti|cinema|viagg|vacanz|hobby|sport|palestra|gioc|entertain|travel|leisure/, "Svago"], [/ristor|\bbar\b|pizz|cibo|food|restaur|caff|coffee|delivery|pranzo|cena|aperitiv/, "Ristoranti"],
+    [/shopping|abbigli|vestit|scarpe|cloth|elettron|acquist/, "Shopping"], [/salute|farmac|medic|dentist|health|pharma|visita|sanit/, "Salute"]],
+  in: [[/stipend|salar|busta paga|payroll|wage|pension/, "Stipendio"], [/paghett|allowance/, "Paghetta"], [/regal|gift/, "Regalo"],
+    [/vendit|vinted|subito|ebay|sold/, "Vendita"], [/lavorett|freelanc|ripetiz|prestaz/, "Lavoretto"], [/interess|interest|cedol|dividend|rendiment/, "Interessi"]]
+};
+const impNorm = s => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+function impNum(v) {
+  if (typeof v === "number") return v;
+  let s = String(v ?? "").replace(/[\s €]|eur/gi, ""), neg = false;
+  if (!s) return NaN;
+  if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+  if (/-$/.test(s)) { neg = true; s = s.slice(0, -1); }
+  s = s.replace(/^\+/, "");
+  const c = s.lastIndexOf(","), d = s.lastIndexOf(".");
+  if (c >= 0 && d >= 0) s = c > d ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  else if (c >= 0) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  const n = Number(s);
+  return isFinite(n) ? (neg ? -Math.abs(n) : n) : NaN;
+}
+function impDate(v) {
+  if (v instanceof Date) return isNaN(v) ? NaN : v.getTime();
+  if (typeof v === "number" && v > 20000 && v < 80000) { const u = new Date(Math.round((v - 25569) * DAY)); return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), 12).getTime(); }
+  const s = String(v ?? "").trim(); let m;
+  const tm = s.match(/(\d{1,2}):(\d{2})/), hh = tm ? +tm[1] : 12, mi = tm ? +tm[2] : 0;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return new Date(+m[1], m[2] - 1, +m[3], hh, mi).getTime();
+  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/))) {
+    let [a, b, y] = [+m[1], +m[2], +m[3]]; if (y < 100) y += 2000; if (b > 12 && a <= 12) [a, b] = [b, a];
+    return b >= 1 && b <= 12 && a >= 1 && a <= 31 ? new Date(y, b - 1, a, hh, mi).getTime() : NaN;
+  }
+  const p = Date.parse(s); return isNaN(p) || !/\d{4}/.test(s) ? NaN : p;
+}
+function impCsv(text) {
+  text = text.replace(/^﻿/, "");
+  const first = text.split(/\r?\n/).slice(0, 5).join("\n");
+  const del = [";", "\t", ","].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === del) { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+async function impReadFile(file) {
+  if (/\.(csv|tsv|txt)$/i.test(file.name) || /csv|plain/.test(file.type)) return impCsv(await file.text());
+  await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const sheets = wb.SheetNames.map(n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" }));
+  return sheets.sort((a, b) => b.length - a.length)[0] || [];
+}
+function impGuess(rows) {
+  rows = rows.filter(r => r.some(c => String(c).trim()));
+  let hi = -1, best = 0;
+  rows.slice(0, 15).forEach((r, i) => { const sc = r.filter(c => typeof c === "string" && IMP_HEAD.some(([, re]) => re.test(impNorm(c)))).length; if (sc > best) { best = sc; hi = i; } });
+  const width = Math.max(...rows.map(r => r.length));
+  const head = hi >= 0 ? rows[hi] : [];
+  const body = rows.slice(hi + 1);
+  const cols = Array.from({ length: width }, (_, i) => ({ name: String(head[i] ?? "").trim() || "Colonna " + String.fromCharCode(65 + (i % 26)), field: "" }));
+  const used = new Set();
+  cols.forEach(c => { const h = impNorm(c.name); const f = IMP_HEAD.find(([k, re]) => !used.has(k) && re.test(h)); if (f && hi >= 0) { c.field = f[0]; used.add(f[0]); } });
+  const sample = i => body.slice(0, 30).map(r => r[i]).filter(v => String(v).trim() !== "");
+  const share = (i, fn) => { const s = sample(i); return s.length ? s.filter(fn).length / s.length : 0; };
+  if (!used.has("date")) { const i = cols.findIndex((c, i) => !c.field && share(i, v => !isNaN(impDate(v))) > .6); if (i >= 0) { cols[i].field = "date"; used.add("date"); } }
+  if (!used.has("amount") && !used.has("in") && !used.has("out")) { const i = cols.findIndex((c, i) => !c.field && share(i, v => !isNaN(impNum(v))) > .6); if (i >= 0) cols[i].field = "amount"; }
+  if (!used.has("note")) { const i = cols.findIndex((c, i) => !c.field && share(i, v => typeof v === "string" && isNaN(impNum(v)) && isNaN(impDate(v))) > .6); if (i >= 0) cols[i].field = "note"; }
+  return { cols, body };
+}
+function impCat(type, raw, note) {
+  const r = impNorm(raw), list = CATS[type];
+  if (r) {
+    const exact = list.find(([n]) => impNorm(n) === r); if (exact) return { cat: exact[0] };
+    if (/trasferiment|giroconto|transfer/.test(r)) return { cat: TRANSFER };
+    const syn = CAT_SYN[type].find(([re]) => re.test(r)); if (syn) return { cat: syn[1] };
+    return { cat: "Altro", unknown: String(raw).trim() };
+  }
+  const n = impNorm(note);
+  const syn = CAT_SYN[type].find(([re]) => re.test(n)) || (type === "out" ? SHOP_CATS.find(([re]) => re.test(n)) : null);
+  return { cat: syn ? syn[1] : "Altro" };
+}
+function impBuild(P) {
+  const col = f => P.cols.findIndex(c => c.field === f);
+  const ix = Object.fromEntries(IMP_FIELDS.slice(1).map(([f]) => [f, col(f)]));
+  const out = [], unknownCats = new Set(), newAccs = new Set(); let bad = 0;
+  P.body.forEach(r => {
+    const ts = ix.date >= 0 ? impDate(r[ix.date]) : NaN;
+    let v = NaN;
+    if (ix.amount >= 0) v = impNum(r[ix.amount]);
+    if ((isNaN(v) || !v) && (ix.in >= 0 || ix.out >= 0)) { const a = ix.in >= 0 ? impNum(r[ix.in]) : NaN, b = ix.out >= 0 ? impNum(r[ix.out]) : NaN; v = a ? Math.abs(a) : b ? -Math.abs(b) : NaN; }
+    if (isNaN(ts) || isNaN(v) || !v) { bad++; return; }
+    let type = v > 0 ? "in" : "out";
+    if (ix.type >= 0) { const t = impNorm(r[ix.type]); if (/entrat|income|accredit|credit|ricev|topup|ricaric|^in$|^\+/.test(t)) type = "in"; else if (/uscit|expense|spes|addebit|debit|pagament|card|^out$|^-/.test(t)) type = "out"; }
+    let note = ix.note >= 0 ? String(r[ix.note] ?? "").trim().slice(0, 200) : "";
+    const { cat, unknown } = impCat(type, ix.cat >= 0 ? r[ix.cat] : "", note);
+    if (unknown) { unknownCats.add(unknown); note = note ? `${note} · ${unknown}` : unknown; }
+    let account = P.target || null;
+    if (ix.account >= 0) { const an = String(r[ix.account] ?? "").trim(); if (an) { const a = accounts().find(a => impNorm(a.name) === impNorm(an)); if (a) account = a.id; else { newAccs.add(an); account = "new:" + an; } } }
+    out.push({ type, amount: Math.round(Math.abs(v) * 100), cat, note, ts, account });
+  });
+  // già presenti: stesso tipo, importo, giorno e descrizione (reimportare lo stesso file non duplica)
+  const key = t => `${t.type}|${t.amount}|${new Date(t.ts).toDateString()}|${impNorm(t.note)}`;
+  const have = {}; Object.values(S.tx).forEach(t => { const k = key(t); have[k] = (have[k] || 0) + 1; });
+  const fresh = out.filter(t => { const k = key(t); if (have[k]) { have[k]--; return false; } return true; });
+  const unmapped = P.cols.filter((c, i) => !c.field && P.body.some(r => String(r[i] ?? "").trim())).map(c => c.name);
+  return { rows: fresh, dup: out.length - fresh.length, bad, unknownCats: [...unknownCats], newAccs: [...newAccs], unmapped };
+}
+function impMail(R, ext) {
+  const list = a => a.slice(0, 15).join(", ").slice(0, 400);
+  const body = `Ciao, ho provato a importare in Keepo un file .${ext} esportato da un'altra app.\n\nApp da cui l'ho esportato: \n` +
+    (R.unmapped.length ? `\nColonne che Keepo non legge ancora: ${list(R.unmapped)}\n` : "") +
+    (R.unknownCats.length ? `\nCategorie che Keepo non ha: ${list(R.unknownCats)}\n` : "") +
+    `\nVorrei che Keepo le gestisse così:\n\n`;
+  return `mailto:${encodeURIComponent(SUPPORT_EMAIL)}?subject=${encodeURIComponent("Keepo: richiesta per l'import da file")}&body=${encodeURIComponent(body)}`;
+}
+async function importSheetFile(file) {
+  let P;
+  try { const rows = await impReadFile(file); P = impGuess(rows); if (!P.body.length) throw 0; }
+  catch { toast(/\.numbers$/i.test(file.name) ? "Da Numbers usa Esporta → Excel o CSV e riprova" : "Non riesco a leggere questo file: prova a esportarlo in Excel o CSV"); return; }
+  if (P.body.length > 20000) P.body = P.body.slice(0, 20000);
+  P.target = lastAccount() || "";
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  const fd = ts => new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "2-digit" });
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Importa movimenti</h3><button class="r" id="impGo">Importa</button></div><div id="impBody"></div>`, (sh, close) => {
+    let R;
+    const draw = () => {
+      R = impBuild(P);
+      const inn = R.rows.filter(t => t.type === "in"), outt = R.rows.filter(t => t.type === "out"), sum = a => a.reduce((s, t) => s + t.amount, 0);
+      const ts = R.rows.map(t => t.ts), hasAcc = P.cols.some(c => c.field === "account");
+      $("#impBody").innerHTML = `<p class="hint" style="margin:0 4px 12px">${esc(file.name)}: ${P.body.length} righe. Controlla che ogni colonna vada nel campo giusto di Keepo.</p>
+        <div class="group-h"><span>Colonne</span></div>
+        <div class="list">${P.cols.map((c, i) => { const s = P.body.find(r => String(r[i] ?? "").trim())?.[i]; return `<label class="cell"><span>${esc(c.name)}${s !== undefined ? `<small style="display:block;color:var(--ink2);font-size:12.5px">es. ${esc(String(s).slice(0, 30))}</small>` : ""}</span>
+          <select data-impcol="${i}">${IMP_FIELDS.map(([f, l]) => `<option value="${f}"${c.field === f ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`; }).join("")}</div>
+        ${hasAcc ? (R.newAccs.length ? `<p class="hint">Creo i conti che non hai ancora: ${esc(R.newAccs.join(", "))}.</p>` : "")
+          : accounts().length ? `<div class="list" style="margin-top:12px"><label class="cell"><span>Metti tutto su</span><select id="impAcc"><option value="">Nessun conto</option>${accounts().map(a => `<option value="${esc(a.id)}"${P.target === a.id ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label></div>` : ""}
+        <div class="group-h"><span>Anteprima</span><span class="num">${R.rows.length}</span></div>
+        ${R.rows.length ? `<div class="list">${R.rows.slice(0, 5).map(t => `<div class="row"><span class="t"><b>${esc(t.note || t.cat)}</b><small>${esc(fd(t.ts))} · ${esc(t.cat)}</small></span><span class="a num${t.type === "in" ? " in" : ""}">${t.type === "in" ? "+" : "−"}${money(t.amount)}</span></div>`).join("")}</div>
+          <p class="hint">${inn.length} entrate per ${money(sum(inn))} e ${outt.length} uscite per ${money(sum(outt))}, dal ${esc(fd(Math.min(...ts)))} al ${esc(fd(Math.max(...ts)))}.</p>` : `<p class="hint">${R.dup && !R.bad ? "Questi movimenti ci sono già tutti in Keepo." : "Nessun movimento da importare con queste colonne. Serve almeno una data e un importo."}</p>`}
+        ${R.dup || R.bad ? `<p class="hint">${R.dup ? `${R.dup} già presenti in Keepo, li salto. ` : ""}${R.bad ? `${R.bad} righe senza data o importo, le salto.` : ""}</p>` : ""}
+        ${R.unmapped.length || R.unknownCats.length ? `<div class="confirm" style="margin-top:16px"><p><b>Keepo non sa ancora usare tutto</b></p>
+          ${R.unmapped.length ? `<p class="hint" style="margin:0">Colonne non importate: ${esc(R.unmapped.join(", "))}.</p>` : ""}
+          ${R.unknownCats.length ? `<p class="hint" style="margin:0">Categorie che Keepo non ha: ${esc(R.unknownCats.slice(0, 12).join(", "))}. Le metto in Altro e scrivo il nome nella descrizione.</p>` : ""}
+          <a class="save ghost" style="display:block;text-align:center;text-decoration:none" href="${esc(impMail(R, ext))}">Chiedi di aggiungerlo</a>
+          <p class="hint" style="margin:0">Si apre una mail con i nomi delle colonne e delle categorie, senza importi né movimenti.</p></div>` : ""}`;
+    };
+    draw();
+    sh.querySelector("[data-x]").onclick = close;
+    sh.addEventListener("change", e => {
+      const s = e.target.closest("[data-impcol]");
+      if (s) { const f = s.value; if (f) P.cols.forEach(c => { if (c.field === f) c.field = ""; }); P.cols[+s.dataset.impcol].field = f; draw(); }
+      if (e.target.id === "impAcc") { P.target = e.target.value; draw(); }
+    });
+    $("#impGo").onclick = () => {
+      if (!R.rows.length) { toast("Niente da importare"); return; }
+      const made = {};
+      if (R.newAccs.length) {
+        const list = accounts().slice();
+        R.newAccs.forEach(n => { const a = { id: uuid(), name: n.slice(0, 30), color: ACC_COLORS[list.length % ACC_COLORS.length] }; list.push(a); made[n] = a.id; });
+        S.settings = { ...S.settings, accounts: list }; enqueue({ op: "up", t: "settings", row: { data: S.settings } });
+      }
+      const ids = [];
+      R.rows.forEach(r => {
+        const t = { id: uuid(), ...r, account: r.account?.startsWith("new:") ? made[r.account.slice(4)] : r.account };
+        S.tx[t.id] = t; ids.push(t.id); enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) });
+      });
+      close(); commit();
+      toast(`Importati ${ids.length} movimenti`, () => { ids.forEach(id => { delete S.tx[id]; enqueue({ op: "del", t: "transactions", id }); }); commit(); });
+    };
+  });
 }
 
 /* ============ recurring ============ */
@@ -2876,6 +3062,7 @@ document.addEventListener("click", e => {
     else if (a === "auto") autoSheet();
     else if (a === "accounts") accountsSheet();
     else if (a === "wage") wageSheet();
+    else if (a === "sheetimport") { const f = $("#sheetIn"); f.value = ""; f.onchange = () => f.files[0] && importSheetFile(f.files[0]); f.click(); }
     else if (a === "import") { const f = $("#importIn"); f.onchange = () => f.files[0] && importBackup(f.files[0]); f.click(); }
   }
 });

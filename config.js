@@ -2,5 +2,7 @@
 // i dati restano protetti dalle regole di sicurezza (RLS) in supabase.sql.
 window.SALVADANAIO_CONFIG = {
   supabaseUrl: "https://vrgexlqvxksyyycqzeaq.supabase.co",
-  supabaseAnonKey: "sb_publishable_MGf220DpQcUyUMjVlPlBgw_UFtq2cAp"
+  supabaseAnonKey: "sb_publishable_MGf220DpQcUyUMjVlPlBgw_UFtq2cAp",
+  // dove arrivano le richieste "Chiedi di aggiungerlo" dall'import da Excel
+  supportEmail: "toppisalvatore7@gmail.com"
 };
