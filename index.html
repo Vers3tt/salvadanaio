@@ -245,14 +245,19 @@ a.row{color:inherit;text-decoration:none}
 .delta b{font-weight:600}
 .dues-line{display:flex;align-items:center;gap:5px}
 .dues-line b{color:var(--green)}
-.duerow{padding-right:12px;gap:8px}
+.duerow{gap:12px}
 .duerow .dmain{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;min-height:62px}
 .duerow .t small.late{color:var(--neg)}
-.duerow .darr{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1.5px currentColor}
+/* Reminders-style circle: empty until tapped, then it fills and the check pops in */
+.duerow .darr{flex:none;width:26px;height:26px;margin:0 2px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1.8px var(--ink3);transition:box-shadow .18s,background .18s;position:relative}
+.duerow .darr::before{content:"";position:absolute;inset:-9px}   /* bigger touch target */
 .duerow .darr.in{color:var(--green)}
 .duerow .darr.out{color:var(--ink)}
-.duerow .darr:active{background:currentColor}
-.duerow .darr:active svg{color:var(--card)}
+.duerow .darr svg{color:var(--card);opacity:0;transform:scale(.4);transition:opacity .15s,transform .25s cubic-bezier(.3,1.6,.5,1)}
+.duerow .darr:hover{box-shadow:inset 0 0 0 1.8px currentColor}
+.duerow .darr.done{background:currentColor;box-shadow:inset 0 0 0 1.8px currentColor}
+.duerow .darr.done svg{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){.duerow .darr,.duerow .darr svg{transition:none}}
 .sec-h .link{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
 .sec-note svg{vertical-align:-2px}
 .owe{margin:0 0 12px}

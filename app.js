@@ -1777,20 +1777,20 @@ function dueWhen(d) {
 }
 function dueRow(d) {
   const a = accById(d.account), late = d.due && d.due < new Date().setHours(0, 0, 0, 0);
+  // like Reminders: an empty circle; the check appears only when you tap it
   return `<div class="row duerow">
+    <button class="darr ${d.dir === "out" ? "out" : "in"}" data-due-done="${esc(d.id)}" aria-label="${d.dir === "out" ? "Segna come pagato" : "Segna come arrivati"}: ${esc(dueTitle(d))}" title="${d.dir === "out" ? "Pagato" : "Arrivati"}">${ic("check", 16)}</button>
     <button class="dmain" data-due="${esc(d.id)}">
-      <span class="ico">${ic(d.dir === "out" ? "arrowOut" : MARKETS.test(d.who || "") ? "label" : "clock", 20)}</span>
       <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b><small class="${late ? "late" : ""}">${a ? `<i class="adot" style="background:${a.color}"></i>` : ""}${esc([d.who && d.note, dueWhen(d), a?.name].filter(Boolean).join(" · "))}</small></span>
       <span class="a num ${d.dir === "out" ? "out" : "in"}">${d.dir === "out" ? "−" : "+"}${money(d.amount)}</span>
     </button>
-    <button class="darr ${d.dir === "out" ? "out" : "in"}" data-due-done="${esc(d.id)}" aria-label="${d.dir === "out" ? "Pagato" : "Arrivati"}: ${esc(dueTitle(d))}" title="${d.dir === "out" ? "Pagato" : "Arrivati"}">${ic("check", 18)}</button>
   </div>`;
 }
 function duesWidget() {
   const inn = duesIn(), out = duesOut();
   if (!inn.length && !out.length) return `<section class="section">
     <div class="sec-h"><h2>Da ricevere</h2></div>
-    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca la spunta quando arrivano. Fino ad allora non contano nel saldo.</span>
+    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca il cerchio quando arrivano. Fino ad allora non contano nel saldo.</span>
     <button class="save small" data-due-new="in">Aggiungi</button></div></section>`;
   return `<section class="section">
     <div class="sec-h"><h2>Da ricevere</h2><button class="link" data-due-new="in">${ic("plus", 15)}Aggiungi</button></div>
@@ -1822,7 +1822,7 @@ function dueSheet(existing, preset = {}) {
       $("#dWhoL").textContent = dir === "out" ? "A chi" : "Da chi";
       const accs = accounts();
       $("#dAccs").innerHTML = accs.length ? `<span class="accs-l">${dir === "out" ? "Da quale conto" : "Dove arriveranno"}</span>` + accs.map(a => `<button class="achip" data-dacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
-      $("#dHint").textContent = dir === "out" ? "Quando li hai dati tocca la spunta e diventa un'uscita." : "Finché non tocchi la spunta non conta nel saldo. Poi diventa un'entrata sul conto che scegli qui.";
+      $("#dHint").textContent = dir === "out" ? "Quando li hai dati tocca il cerchio e diventa un'uscita." : "Finché non tocchi il cerchio non conta nel saldo. Poi diventa un'entrata sul conto che scegli qui.";
     };
     sh.querySelector("[data-x]").onclick = close;
     sh.addEventListener("click", e => {
@@ -1955,8 +1955,9 @@ function onboardingAction(a) {
 const TOUR = [
   { sel: ".card.balance", tab: "home", t: "Il tuo saldo", d: "Qui vedi quanto hai. Il grafico mostra com'è andata e, tratteggiato, dove arrivi nei prossimi 30 giorni." },
   { sel: ".actions", tab: "home", t: "Una spesa? Due tocchi", d: "Tocca Uscita o Entrata, scrivi l'importo e scegli la categoria. Dallo stesso pannello puoi fotografare lo scontrino." },
-  { sel: '[data-w="dues"]', tab: "home", t: "Soldi in arrivo", d: "Una vendita su Vinted, un amico che ti deve la cena: li segni qui e non contano nel saldo. Quando arrivano tocchi la spunta." },
+  { sel: '[data-w="dues"]', tab: "home", t: "Soldi in arrivo", d: "Una vendita su Vinted, un amico che ti deve la cena: li segni qui e non contano nel saldo. Quando arrivano tocchi il cerchio accanto." },
   { sel: '[data-w="cats"]', tab: "home", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria. Tocca una riga per darti un budget: Keepo ti avvisa prima di sforarlo." },
+  { sel: '.brandnav [data-hl-edit]', tab: "home", t: "La Home la decidi tu", d: "Tocca qui (o Personalizza la Home, in fondo alla pagina) per spostare i riquadri, nascondere quelli che non usi o scegliere una disposizione pronta." },
   { sel: '.tabbar [data-tab="mov"]', t: "Tutti i movimenti", d: "Li cerchi per nota o negozio e li filtri per conto e categoria con i menu sotto la ricerca." },
   { sel: '.tabbar [data-tab="goals"]', t: "Cosa vuoi comprarti?", d: "Aggiungi un obiettivo con nome e prezzo, anche incollando il link del prodotto. Tutto il saldo lo fa avanzare." },
   { sel: '.tabbar [data-tab="more"]', t: "Siri, Watch e il resto", d: "In Altro ci sono conti, budget, i Comandi Rapidi per Siri e il Centro di Controllo. E questa guida, se vuoi rivederla." }
@@ -3063,7 +3064,17 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-budgets]") && !e.target.closest(".sheet")) { budgetSheet(); return; }
   if (!e.target.closest(".sheet")) {
     const dn = e.target.closest("[data-due-new]"); if (dn) { dueSheet(null, { dir: dn.dataset.dueNew }); return; }
-    const dd = e.target.closest("[data-due-done]"); if (dd) { const d = dues().find(x => x.id === dd.dataset.dueDone); if (d) dueDoneSheet(d); return; }
+    const dd = e.target.closest("[data-due-done]");
+    if (dd) {
+      const d = dues().find(x => x.id === dd.dataset.dueDone); if (!d || dd.classList.contains("done")) return;
+      dd.classList.add("done");   // the circle fills with the check, then the sheet asks where the money went
+      setTimeout(() => {
+        dueDoneSheet(d);
+        // cancelled: the row is still there, so the circle goes back to empty
+        const t = setInterval(() => { if (!closeSheet) { clearInterval(t); if (dd.isConnected) dd.classList.remove("done"); } }, 250);
+      }, 420);
+      return;
+    }
     const de = e.target.closest("[data-due]"); if (de) { const d = dues().find(x => x.id === de.dataset.due); if (d) dueSheet(d); return; }
   }
   const mb0 = e.target.closest("[data-mascot]");
