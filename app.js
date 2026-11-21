@@ -1824,7 +1824,7 @@ function dueRow(d) {
   return `<div class="row duerow">
     <button class="darr ${d.dir === "out" ? "out" : "in"}" data-due-done="${esc(d.id)}" aria-label="${d.dir === "out" ? "Segna come pagato" : "Segna come arrivati"}: ${esc(dueTitle(d))}" title="${d.dir === "out" ? "Pagato" : "Arrivati"}">${ic("check", 16)}</button>
     <button class="dmain" data-due="${esc(d.id)}">
-      <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b><small class="${late ? "late" : ""}">${a ? `<i class="adot" style="background:${a.color}"></i>` : ""}${esc([d.who && d.note, dueWhen(d), a?.name].filter(Boolean).join(" · "))}</small></span>
+      <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b><small class="${late ? "late" : ""}">${a ? `<i class="adot" style="background:${a.color}"></i>` : ""}${esc([dueWhen(d), d.who && d.note, a?.name].filter(Boolean).join(" · "))}</small></span>
       <span class="a num ${d.dir === "out" ? "out" : "in"}">${d.dir === "out" ? "−" : "+"}${money(d.amount)}</span>
     </button>
   </div>`;
@@ -1832,14 +1832,19 @@ function dueRow(d) {
 function duesWidget() {
   const inn = duesIn(), out = duesOut();
   if (!inn.length && !out.length) return `<section class="section">
-    <div class="sec-h"><h2>Da ricevere</h2></div>
-    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi?</b><span>Una vendita su Vinted, un amico che ti deve la cena: segnali qui e tocca il cerchio quando arrivano. Fino ad allora non contano nel saldo.</span>
-    <button class="save small" data-due-new="in">Aggiungi</button></div></section>`;
-  return `<section class="section">
-    <div class="sec-h"><h2>Da ricevere</h2><button class="link" data-due-new="in">${ic("plus", 15)}Aggiungi</button></div>
-    ${inn.length ? `<p class="sec-note">In arrivo <b class="num pos">${money(duesTotal(inn))}</b></p><div class="list">${inn.map(dueRow).join("")}</div>` : ""}
-    ${out.length ? `<p class="sec-note" style="margin-top:${inn.length ? 14 : 0}px">Devi dare <b class="num">${money(duesTotal(out))}</b></p><div class="list">${out.map(dueRow).join("")}</div>` : ""}
-  </section>`;
+    <div class="sec-h"><h2>Da ricevere e da dare</h2></div>
+    <div class="card empty dues-empty"><span class="empty-ico">${ic("clock", 26)}</span><b>Aspetti dei soldi, o li devi tu?</b><span>Una vendita su Vinted, un amico che ti deve la cena, un prestito da restituire: segnali qui e tocca il cerchio quando arrivano o li dai. Fino ad allora non contano nel saldo.</span>
+    <div class="btnrow"><button class="save small" data-due-new="in">Da ricevere</button><button class="save small ghost" data-due-new="out">Da dare</button></div></div></section>`;
+  // two sections, each with its own total and its own Aggiungi: money coming in, money going out
+  const part = (dir, list) => {
+    const isIn = dir === "in";
+    return `<div class="dues-part${isIn ? "" : " out"}">
+      <div class="sec-h"><h2>${isIn ? "Da ricevere" : "Da dare"}</h2><button class="link" data-due-new="${dir}">${ic("plus", 15)}Aggiungi</button></div>
+      ${list.length ? `<p class="sec-note">${isIn ? "In arrivo" : "Devi dare"} <b class="num${isIn ? " pos" : ""}">${money(duesTotal(list))}</b></p><div class="list">${list.map(dueRow).join("")}</div>`
+        : `<p class="sec-note dues-none">${isIn ? "Niente in arrivo per ora." : "Non devi soldi a nessuno."}</p>`}
+    </div>`;
+  };
+  return `<section class="section dues">${part("in", inn)}${part("out", out)}</section>`;
 }
 function dueSheet(existing, preset = {}) {
   let dir = existing?.dir || preset.dir || "in", acc = existing ? existing.account || "" : preset.account ?? lastAccount();
@@ -1908,7 +1913,7 @@ function dueDoneSheet(d) {
     $("#ddGo").onclick = () => {
       const v = parseAmt($("#ddAmt").value);
       if (!v) { toast("Scrivi l'importo"); return; }
-      const cat = out ? "Altro" : MARKETS.test(d.who || "") ? "Vendita" : "Altro";
+      const cat = !out && MARKETS.test(d.who || "") && cats("in").some(([n]) => n === "Vendita") ? "Vendita" : "Altro";
       const note = (d.tx && !out ? "Rimborso" + (d.who ? " da " + d.who : "") : dueTitle(d)).slice(0, 80);
       const tx = { id: uuid(), type: out ? "out" : "in", amount: v, cat, note, ts: Date.now(), account: acc || null };
       const before = { ...d }, rest = keepRest ? d.amount - v : 0;
