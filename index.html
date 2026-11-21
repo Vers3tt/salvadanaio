@@ -171,6 +171,14 @@ a.row{color:inherit;text-decoration:none}
 .amount .v.in{color:var(--green)}
 .cats{display:flex;gap:6px;overflow-x:auto;margin:10px -16px 12px;padding:0 16px 2px;scrollbar-width:none}
 .cats::-webkit-scrollbar{display:none}
+.catrow{padding-right:8px;gap:2px}
+.catrow .dmain{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;min-height:58px}
+.catmv{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--ink2)}
+.catmv:hover:not(:disabled){background:var(--fill);color:var(--ink)} .catmv:disabled{opacity:.25}
+.catmv.up svg{transform:rotate(180deg)}
+.caticons{display:grid;grid-template-columns:repeat(auto-fill,minmax(48px,1fr));gap:8px}
+.caticon{aspect-ratio:1;border-radius:14px;display:grid;place-items:center;background:var(--card);color:var(--ink2)}
+.caticon[aria-pressed=true]{background:var(--ink);color:var(--on-ink)}
 .cat{display:grid;justify-items:center;gap:6px;font-size:12px;color:var(--ink2);min-width:64px}
 .cat .ico{width:48px;height:48px;border-radius:14px;background:var(--card);transition:background .12s,color .12s}
 .cat[aria-pressed="true"]{color:var(--ink);font-weight:600}
@@ -427,7 +435,7 @@ button.crow{width:100%;text-align:left}
 .side-brand,.side-actions,.side-foot{display:none}
 .mov-sum{display:none}
 .mov-count{margin:-4px 4px 12px;color:var(--ink2);font-size:13.5px}
-.mov-count b{font-weight:600;color:var(--ink)} .mov-count b.pos{color:var(--green)}
+.mov-count b{font-weight:600;color:var(--ink)} .mov-count small{font-size:12.5px} .mov-count b.pos{color:var(--green)}
 /* ===== home: widget spostabili ===== */
 .home-grid .col{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:30px;min-width:0}
 .w{position:relative;min-width:0;border-radius:20px}
@@ -605,6 +613,8 @@ button.crow{width:100%;text-align:left}
   .mov-sum div:first-child span{color:var(--ink);font-weight:600}
   .mov-sum span{color:var(--ink2);font-size:14px}
   .mov-sum b{font-weight:600}
+  .mov-sum .mov-skip{padding:8px 16px 10px}
+  .mov-sum .mov-skip small{color:var(--ink2);font-size:12.5px}
   #movList .group-h:first-child{margin-top:0}
 
   .screen > .group-h,.screen > .list,.screen > .foot,.screen > .about{max-width:720px}

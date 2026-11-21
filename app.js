@@ -70,6 +70,15 @@ const P = {
   cloudOff: '<path d="m3 3 18 18"/><path d="M8.2 6.2A6 6 0 0 1 16.4 10h.6a4 4 0 0 1 3.2 6.4M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   percent: '<circle cx="7" cy="7" r="2.6"/><circle cx="17" cy="17" r="2.6"/><path d="M19 5 5 19"/>',
+  book: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>',
+  plane: '<path d="M10.5 13.5 3 11l1.5-1.5 7 1 4-4.5a1.8 1.8 0 0 1 2.5 2.5l-4.5 4 1 7L13 21l-2.5-7.5z"/>',
+  paw: '<circle cx="6.5" cy="10.5" r="1.6"/><circle cx="10" cy="6.5" r="1.6"/><circle cx="14" cy="6.5" r="1.6"/><circle cx="17.5" cy="10.5" r="1.6"/><path d="M12 11.5c-2.4 0-4.8 3-4.8 5.4 0 1.5 1.1 2.2 2.4 2.2 1 0 1.6-.5 2.4-.5s1.4.5 2.4.5c1.3 0 2.4-.7 2.4-2.2 0-2.4-2.4-5.4-4.8-5.4z"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/>',
+  music: '<path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+  game: '<path d="M7 8h10a4 4 0 0 1 4 4v1.5a3.5 3.5 0 0 1-6.3 2.1L14 14.5h-4l-.7 1.1A3.5 3.5 0 0 1 3 13.5V12a4 4 0 0 1 4-4z"/><path d="M7.5 10.5v3M6 12h3"/><circle cx="16" cy="11.5" r=".6"/><circle cx="17.5" cy="13" r=".6"/>',
+  shirt: '<path d="M8.5 3.5 4 6l1.8 4.2L8 9.4v11.1h8V9.4l2.2.8L20 6l-4.5-2.5a3.5 3.5 0 0 1-7 0z"/>',
+  gym: '<path d="M6.5 7v10M17.5 7v10M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/>',
+  star: '<path d="m12 3.5 2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M4 3.5v5h5M20 20.5v-5h-5"/>'
 };
 const ic = (name, size = 22) => `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name]}</svg>`;
@@ -225,6 +234,13 @@ const CATS = {
   out: [["Spesa","cart"],["Casa","home"],["Bollette","bolt"],["Trasporti","car"],["Svago","ticket"],["Ristoranti","fork"],["Shopping","bag"],["Salute","heart"],["Altro","dots"]],
   in:  [["Stipendio","case"],["Paghetta","coins"],["Regalo","gift"],["Vendita","label"],["Lavoretto","wrench"],["Interessi","percent"],["Altro","dots"]]
 };
+// The categories you use: your own list if you changed it (Altro → Categorie), otherwise Keepo's. "Altro" is always there.
+const cats = type => {
+  const c = S.settings?.cats?.[type];
+  const list = Array.isArray(c) && c.length ? c.filter(x => Array.isArray(x) && x[0]) : CATS[type];
+  return list.some(x => x[0] === "Altro") ? list : [...list, ["Altro", "dots"]];
+};
+const CAT_ICONS = ["cart", "home", "bolt", "car", "ticket", "fork", "bag", "heart", "case", "coins", "gift", "label", "wrench", "percent", "receipt", "wallet", "calendar", "camera", "mail", "clock", "book", "plane", "paw", "phone", "music", "game", "shirt", "gym", "star", "dots"];
 const TRANSFER = "Trasferimento";
 const isTransfer = t => t.cat === TRANSFER;
 const ADJUST = "Allineamento";   // corrections from "Allinea il saldo": they fix the balance but are not income or spending
@@ -233,7 +249,7 @@ function catInfo(type, name) {
   if (name === "Obiettivo") return ["Obiettivo", "flag"];
   if (name === TRANSFER) return [TRANSFER, "transfer"];
   if (name === ADJUST) return [ADJUST, "sync"];
-  return CATS[type].find(c => c[0] === name) || [type === "in" ? "Entrata" : "Uscita", type === "in" ? "arrowIn" : "arrowOut"];
+  return cats(type).find(c => c[0] === name) || CATS[type].find(c => c[0] === name) || (name ? [name, type === "in" ? "arrowIn" : "arrowOut"] : [type === "in" ? "Entrata" : "Uscita", type === "in" ? "arrowIn" : "arrowOut"]);
 }
 
 /* ============ state & persistence ============ */
@@ -685,7 +701,7 @@ function categoryBreakdown(m) {
   if (!rows.length) return emptyCard("cart", "Nessuna spesa", `In ${m.label.toLowerCase()} non hai segnato uscite.`);
   const top = Math.max(...rows.map(r => r[1]), 1);
   return catDonut(m, rows) + `<div class="list cats-break">${rows.map(([name, v, bud]) => {
-    const icon = name === "Obiettivo" ? "flag" : (CATS.out.find(c => c[0] === name) || [, "arrowOut"])[1];
+    const icon = name === "Obiettivo" ? "flag" : catInfo("out", name)[1];
     const ratio = bud ? v / bud : 0, state = !bud ? "" : ratio > 1 ? "over" : ratio >= .8 ? "warn" : "";
     const sub = bud ? (ratio > 1 ? `Superato di ${money(v - bud)}` : `Restano ${money(bud - v)} di ${money(bud)}`) : "";
     return `<button class="crow ${state}" data-budgets style="--cc:${catColor(name)}">
@@ -758,7 +774,7 @@ function movChips() {
   const accOpts = accs.map(a => ({ v: a.id, l: a.name, n: accList.filter(t => t.account === a.id).length })).filter(o => o.n || o.v === movAcc);
   // every category of the chosen type is in the menu, also the ones with no movements yet (they go last, with 0)
   const catCount = new Map(countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; }).map(c => [c.k, c.n]));
-  const catNames = [...new Set([...(movFilter === "in" ? [] : CATS.out), ...(movFilter === "out" ? [] : CATS.in)].map(c => c[0]).concat([...catCount.keys()], movCat ? [movCat] : []))];
+  const catNames = [...new Set([...(movFilter === "in" ? [] : cats("out")), ...(movFilter === "out" ? [] : cats("in"))].map(c => c[0]).concat([...catCount.keys()], movCat ? [movCat] : []))];
   const catOpts = catNames.map(c => ({ v: c, l: c, n: catCount.get(c) || 0 })).sort((a, b) => (b.n > 0) - (a.n > 0) || b.n - a.n || a.l.localeCompare(b.l));
   const noteOpts = countBy(movBase("note"), t => { const n = norm(t.note); return n ? [n, t.note.trim().replace(/\s+/g, " ")] : null; })
     .filter(x => x.n > 1 || x.k === movNote).map(x => ({ v: x.k, l: x.label, n: x.n }));
@@ -768,25 +784,33 @@ function movChips() {
 }
 // The counter follows the Tutti / Entrate / Uscite choice: with Uscite you see only how many uscite and how much,
 // never a useless "Entrate 0,00 €". On the phone it is one line under the filters.
+// Transfers between accounts and balance corrections are not income or spending: they stay in the list
+// but not in the totals, unless you are filtering exactly that category.
+const movCounts = t => !isNeutral(t) || (movCat && isNeutral({ cat: movCat }));
 function movSummary() {
-  const l = movFiltered(), inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
+  const all = movFiltered(), l = all.filter(movCounts), skipped = all.length - l.length;
+  const inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
   const n = l.length;
+  const skipTxt = skipped ? `${skipped} ${all.some(t => t.cat === ADJUST) ? (skipped === 1 ? "trasferimento o allineamento" : "trasferimenti e allineamenti") : (skipped === 1 ? "trasferimento tra conti" : "trasferimenti tra conti")} non ${skipped === 1 ? "contato" : "contati"}` : "";
+  const skipRow = skipped ? `<div class="mov-skip"><small>${esc(skipTxt)}</small></div>` : "", skipLine = skipped ? ` <small>(${esc(skipTxt)})</small>` : "";
   if (movFilter !== "all") {
     const isIn = movFilter === "in", tot = isIn ? inn : out, word = isIn ? (n === 1 ? "entrata" : "entrate") : (n === 1 ? "uscita" : "uscite");
     return `<div class="card mov-sum">
       <div><span>${n} ${word}</span></div>
       <div><span>Totale</span><b class="num ${isIn ? "pos" : ""}">${money(tot)}</b></div>
       ${n > 1 ? `<div><span>In media</span><b class="num">${money(Math.round(tot / n))}</b></div>` : ""}
+      ${skipRow}
     </div>
-    <p class="mov-count">${n} ${word} · <b class="num ${isIn ? "pos" : ""}">${isIn ? "+" : "−"}${money(tot)}</b></p>`;
+    <p class="mov-count">${n} ${word} · <b class="num ${isIn ? "pos" : ""}">${isIn ? "+" : "−"}${money(tot)}</b>${skipLine}</p>`;
   }
   return `<div class="card mov-sum">
     <div><span>${n === 1 ? "1 movimento" : n + " movimenti"}</span></div>
     <div><span>Entrate</span><b class="num pos">${money(inn)}</b></div>
     <div><span>Uscite</span><b class="num">${money(out)}</b></div>
     <div><span>Differenza</span><b class="num ${inn - out < 0 ? "neg" : ""}">${inn - out < 0 ? "−" : ""}${money(Math.abs(inn - out))}</b></div>
+    ${skipRow}
   </div>
-  ${movAcc || movCat || movNote || movQuery.trim() ? `<p class="mov-count">${n === 1 ? "1 movimento" : n + " movimenti"}${inn ? ` · <b class="num pos">+${money(inn)}</b>` : ""}${out ? ` · <b class="num">−${money(out)}</b>` : ""}</p>` : ""}`;
+  ${movAcc || movCat || movNote || movQuery.trim() ? `<p class="mov-count">${n === 1 ? "1 movimento" : n + " movimenti"}${inn ? ` · <b class="num pos">+${money(inn)}</b>` : ""}${out ? ` · <b class="num">−${money(out)}</b>` : ""}${skipLine}</p>` : ""}`;
 }
 function movList() {
   const q = movQuery.trim().toLowerCase();
@@ -795,7 +819,7 @@ function movList() {
   for (const t of list) {
     const d = new Date(t.ts), k = d.getFullYear() + "-" + d.getMonth();
     if (!groups.length || groups[groups.length - 1].k !== k) groups.push({ k, d, items: [], net: 0 });
-    const g = groups[groups.length - 1]; g.items.push(t); g.net += t.type === "in" ? t.amount : -t.amount;
+    const g = groups[groups.length - 1]; g.items.push(t); if (movCounts(t)) g.net += t.type === "in" ? t.amount : -t.amount;
   }
   if (!groups.length) return q ? emptyCard("search", "Nessun risultato", `Nessun movimento contiene "${movQuery.trim()}".`)
     : movAcc || movCat || movNote ? emptyCard("search", "Nessun risultato", "Nessun movimento con questi filtri.")
@@ -859,6 +883,7 @@ function moreScreen() {
     <button class="cell btn" data-more="wage"><span>Quanto ti costa davvero</span><span>${S.settings.hourly ? esc(money(S.settings.hourly)) + "/ora" : "Imposta"}</span></button>
     <button class="cell btn" data-check><span>Allinea il saldo</span><span>${esc(CHECK_EVERY.find(c => c[0] === checkEvery())[1])}</span></button>
     <button class="cell btn" data-more="accounts"><span>Conti</span><span>${accounts().length || "Nessuno"}</span></button>
+    <button class="cell btn" data-more="cats"><span>Categorie</span><span>${S.settings.cats ? "Personalizzate" : "Quelle di Keepo"}</span></button>
     <button class="cell btn" data-more="budgets"><span>Budget mensili</span><span>${Object.keys(S.settings.budgets || {}).filter(k => S.settings.budgets[k] > 0).length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="dues"><span>Da ricevere e da dare</span><span>${dues().length || "Nessuno"}</span></button>
     <button class="cell btn" data-more="recurring"><span>Movimenti ricorrenti</span><span>${Object.values(S.rec).filter(r => r.active).length || "Nessuno"}</span></button>
@@ -1114,8 +1139,8 @@ function txSheet(type, existing) {
       const ip = i ? String(Number(i)) : "0";
       $("#amtV").className = "v num " + t;
       $("#amtV").innerHTML = `${t === "in" ? "+" : "−"}${esc(ip.replace(/\B(?=(\d{3})+(?!\d))/g, "."))}<span class="cents${str.includes(",") ? "" : " ghost"}">,${esc((d + "00").slice(0, 2))}</span><span class="cur">€</span>`;
-      if (!CATS[t].some(c => c[0] === cat) && cat !== "Obiettivo") cat = "";
-      $("#cats").innerHTML = CATS[t].map(([n, icon]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico">${ic(icon, 22)}</span>${esc(n)}</button>`).join("");
+      if (!cats(t).some(c => c[0] === cat) && cat !== "Obiettivo" && !(existing && existing.cat === cat && existing.type === t)) cat = "";
+      $("#cats").innerHTML = cats(t).map(([n, icon]) => `<button class="cat" data-cat="${esc(n)}" aria-pressed="${cat === n}"><span class="ico">${ic(icon, 22)}</span>${esc(n)}</button>`).join("");
       const accs = accounts();
       $("#accs").innerHTML = accs.length ? `<span class="accs-l">Conto</span>` + accs.map(a => `<button class="achip" data-acc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
       const wt = workTime(parseAmt(str)); $("#wt").innerHTML = wt && t === "out" ? `${ic("clock", 14)}≈ ${esc(wt)} di lavoro` : "";
@@ -1580,16 +1605,16 @@ function impGuess(rows) {
   return { cols, body };
 }
 function impCat(type, raw, note) {
-  const r = impNorm(raw), list = CATS[type];
+  const r = impNorm(raw), list = cats(type), has = n => list.some(([x]) => x === n);
   if (r) {
     const exact = list.find(([n]) => impNorm(n) === r); if (exact) return { cat: exact[0] };
     if (/trasferiment|giroconto|transfer/.test(r)) return { cat: TRANSFER };
-    const syn = CAT_SYN[type].find(([re]) => re.test(r)); if (syn) return { cat: syn[1] };
+    const syn = CAT_SYN[type].find(([re]) => re.test(r)); if (syn && has(syn[1])) return { cat: syn[1] };
     return { cat: "Altro", unknown: String(raw).trim() };
   }
   const n = impNorm(note);
   const syn = CAT_SYN[type].find(([re]) => re.test(n)) || (type === "out" ? SHOP_CATS.find(([re]) => re.test(n)) : null);
-  return { cat: syn ? syn[1] : "Altro" };
+  return { cat: syn && has(syn[1]) ? syn[1] : "Altro" };
 }
 function impBuild(P) {
   const col = f => P.cols.findIndex(c => c.field === f);
@@ -1696,7 +1721,9 @@ function advance(ts, freq) {
 }
 // same id on every device for the same occurrence, so two phones never create it twice
 async function occurrenceId(ruleId, ts) {
-  const h = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(ruleId + ":" + ts)))].map(b => b.toString(16).padStart(2, "0")).join("");
+  const src = ruleId + ":" + ts;
+  const h = crypto.subtle ? [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(src)))].map(b => b.toString(16).padStart(2, "0")).join("")
+    : [0, 1, 2, 3].map(k => { let x = 2166136261 ^ k; for (const c of src) x = Math.imul(x ^ c.charCodeAt(0), 16777619); return (x >>> 0).toString(16).padStart(8, "0"); }).join("");   // no crypto.subtle off https
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${(8 + (parseInt(h[16], 16) & 3)).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 let recRunning = false;
@@ -1914,12 +1941,103 @@ function budgetSheet() {
   const b = S.settings.budgets || {};
   sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>Budget mensili</h3><button class="r" id="bSave">Salva</button></div>
     <p class="hint" style="margin:0 4px 12px">Un tetto di spesa al mese per categoria. Ti avviso all'80% e quando lo superi. Lascia vuoto per non avere limiti.</p>
-    <div class="list">${CATS.out.map(([n, icon]) => `<label class="cell bud"><span class="ico">${ic(icon, 20)}</span><span class="bname">${esc(n)}</span>
+    <div class="list">${cats("out").map(([n, icon]) => `<label class="cell bud"><span class="ico">${ic(icon, 20)}</span><span class="bname">${esc(n)}</span>
       <input inputmode="decimal" data-bud="${esc(n)}" placeholder="—" value="${b[n] ? esc(centsToInput(b[n]).replace(/,00$/, "")) : ""}"><span class="beur">€</span></label>`).join("")}</div>`, (sh, close) => {
     sh.querySelector("[data-x]").onclick = close;
     $("#bSave").onclick = () => {
       const out = {}; sh.querySelectorAll("[data-bud]").forEach(i => { const v = parseAmt(i.value); if (v) out[i.dataset.bud] = v; });
       close(); saveSettings({ budgets: out }); toast(Object.keys(out).length ? "Budget salvati" : "Budget rimossi");
+    };
+  });
+}
+
+/* ============ categorie personalizzate ============ */
+// Your list is saved in the settings (so it syncs). Renaming or deleting also moves the movements, recurring rules and
+// budgets that used the old name. Names Keepo uses for itself can't be taken.
+const CAT_RESERVED = ["obiettivo", "trasferimento", "allineamento"];
+let catTab = "out";
+function saveCats(type, list) { saveSettings({ cats: { ...(S.settings.cats || {}), [type]: list.map(([n, i]) => [n, i]) } }); }
+function retagCategory(type, from, to) {   // movements and recurring rules from one name to another; returns how many movements
+  let n = 0;
+  for (const t of Object.values(S.tx)) if (t.type === type && t.cat === from) { const u = { ...t, cat: to }; S.tx[t.id] = u; enqueue({ op: "up", t: "transactions", row: pick(u, COLS.transactions) }); n++; }
+  for (const r of Object.values(S.rec)) if (r.type === type && r.cat === from) { const u = { ...r, cat: to }; S.rec[r.id] = u; enqueue({ op: "up", t: "recurring", row: pick(u, COLS.recurring) }); }
+  return n;
+}
+function catsSheet() {
+  const draw = () => {
+    const list = cats(catTab), used = {};
+    for (const t of Object.values(S.tx)) if (t.type === catTab) used[t.cat] = (used[t.cat] || 0) + 1;
+    return `<div class="seg" role="group" style="margin:0 0 12px">${[["out", "Uscite"], ["in", "Entrate"]].map(([k, l]) => `<button data-ctab="${k}" aria-pressed="${catTab === k}">${l}</button>`).join("")}</div>
+      <div class="list">${list.map(([n, icon], i) => `<div class="row catrow">
+        <button class="dmain" data-cedit="${esc(n)}"><span class="ico">${ic(icon, 20)}</span><span class="t"><b>${esc(n)}</b><small>${used[n] ? (used[n] === 1 ? "1 movimento" : used[n] + " movimenti") : "Nessun movimento"}</small></span></button>
+        <button class="catmv up" data-cmove="${i}" data-dir="-1" aria-label="Sposta su ${esc(n)}"${i ? "" : " disabled"}>${ic("chevD", 16)}</button>
+        <button class="catmv" data-cmove="${i}" data-dir="1" aria-label="Sposta giù ${esc(n)}"${i < list.length - 1 ? "" : " disabled"}>${ic("chevD", 16)}</button>
+      </div>`).join("")}</div>
+      <button class="save" data-cadd style="margin-top:12px">Aggiungi categoria</button>
+      ${S.settings.cats?.[catTab] ? `<button class="link" data-creset style="display:block;margin:14px auto 0">Torna alle categorie di Keepo</button>` : ""}
+      <p class="foot">L'ordine è quello che vedi quando segni un movimento. Siri, Apple Pay e le email della banca usano ancora le categorie di Keepo.</p>`;
+  };
+  sheet(`<div class="sheet-h"><span></span><h3>Categorie</h3><button class="r" data-x>Fine</button></div><div id="catBody">${draw()}</div>`, (sh, close) => {
+    sh.querySelector("[data-x]").onclick = close;
+    const redraw = () => { $("#catBody").innerHTML = draw(); };
+    sh.addEventListener("click", e => {
+      const tb = e.target.closest("[data-ctab]"); if (tb) { catTab = tb.dataset.ctab; redraw(); return; }
+      const mv = e.target.closest("[data-cmove]");
+      if (mv) { const list = cats(catTab).slice(), i = +mv.dataset.cmove, j = i + +mv.dataset.dir; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; saveCats(catTab, list); redraw(); return; }
+      const ed = e.target.closest("[data-cedit]"); if (ed) { catEditSheet(catTab, cats(catTab).find(c => c[0] === ed.dataset.cedit)); return; }
+      if (e.target.closest("[data-cadd]")) { catEditSheet(catTab); return; }
+      if (e.target.closest("[data-creset]")) {
+        const mine = cats(catTab).filter(([n]) => !CATS[catTab].some(([m]) => m === n)).map(c => c[0]);
+        const c = { ...(S.settings.cats || {}) }; delete c[catTab]; saveSettings({ cats: c }); redraw();
+        toast(mine.length ? `Categorie di Keepo ripristinate. I movimenti di ${mine.join(", ")} tengono il loro nome.` : "Categorie di Keepo ripristinate");
+      }
+    });
+  });
+}
+function catEditSheet(type, existing) {
+  let icon = existing?.[1] || "label";
+  const nUsed = existing ? Object.values(S.tx).filter(t => t.type === type && t.cat === existing[0]).length : 0;
+  const isOther = existing?.[0] === "Altro";
+  sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica categoria" : type === "in" ? "Nuova categoria di entrata" : "Nuova categoria di uscita"}</h3><button class="r" id="cSave">Salva</button></div>
+    <div class="fields"><div class="field"><input id="cName" placeholder="${type === "in" ? "Es. Rimborsi" : "Es. Animali"}" maxlength="20" value="${esc(existing?.[0] || "")}"${isOther ? " disabled" : ""}></div></div>
+    ${isOther ? `<p class="hint">Altro resta sempre: è dove finiscono i movimenti delle categorie che elimini. Puoi cambiare solo l'icona.</p>` : existing && nUsed ? `<p class="hint">Se cambi il nome, anche ${nUsed === 1 ? "il movimento che la usa" : `i ${nUsed} movimenti che la usano`} passano al nome nuovo.</p>` : ""}
+    <div class="group-h"><span>Icona</span></div>
+    <div class="caticons" id="cIcons"></div>
+    ${existing && !isOther ? `<button class="save danger" id="cDel" style="margin-top:18px">Elimina categoria</button><div id="cDelBox"></div>` : ""}`, (sh, close) => {
+    const drawIcons = () => $("#cIcons").innerHTML = CAT_ICONS.map(k => `<button class="caticon" data-icon="${k}" aria-pressed="${k === icon}" aria-label="Icona ${k}">${ic(k, 22)}</button>`).join("");
+    drawIcons();
+    sh.querySelector("[data-x]").onclick = () => { close(); catsSheet(); };
+    sh.addEventListener("click", e => { const b = e.target.closest("[data-icon]"); if (b) { icon = b.dataset.icon; drawIcons(); } });
+    if (!existing) setTimeout(() => $("#cName").focus(), 50);
+    $("#cSave").onclick = () => {
+      const name = isOther ? "Altro" : $("#cName").value.trim().replace(/\s+/g, " ");
+      if (!name) { toast("Scrivi il nome della categoria"); $("#cName").focus(); return; }
+      const list = cats(type).slice(), clash = list.find(([n]) => n.toLowerCase() === name.toLowerCase() && n !== existing?.[0]);
+      if (clash) { toast(`C'è già la categoria ${clash[0]}`); return; }
+      if (CAT_RESERVED.includes(name.toLowerCase())) { toast(`${name} la usa già Keepo: scegli un altro nome`); return; }
+      let moved = 0;
+      if (existing) {
+        list[list.findIndex(([n]) => n === existing[0])] = [name, icon];
+        if (name !== existing[0]) {
+          moved = retagCategory(type, existing[0], name);
+          const b = { ...(S.settings.budgets || {}) };
+          if (type === "out" && b[existing[0]]) { b[name] = b[existing[0]]; delete b[existing[0]]; S.settings = { ...S.settings, budgets: b }; }
+        }
+      } else list.splice(Math.max(0, list.findIndex(([n]) => n === "Altro")), 0, [name, icon]);   // new ones go before Altro
+      close(); saveCats(type, list); catsSheet();
+      toast(!existing ? `${name} aggiunta` : moved ? `${name} salvata, ${moved === 1 ? "1 movimento aggiornato" : moved + " movimenti aggiornati"}` : `${name} salvata`);
+    };
+    if (existing && !isOther) $("#cDel").onclick = () => {
+      $("#cDel").hidden = true;
+      $("#cDelBox").innerHTML = `<div class="confirm"><p>Eliminare "${esc(existing[0])}"?${nUsed ? ` ${nUsed === 1 ? "Il suo movimento passa" : `I suoi ${nUsed} movimenti passano`} in Altro.` : ""}</p>
+        <div class="btnrow"><button class="save ghost" id="cNo">Annulla</button><button class="save" style="background:var(--neg);color:#fff" id="cYes">Elimina</button></div></div>`;
+      $("#cNo").onclick = () => { $("#cDelBox").innerHTML = ""; $("#cDel").hidden = false; };
+      $("#cYes").onclick = () => {
+        retagCategory(type, existing[0], "Altro");
+        if (type === "out" && S.settings.budgets?.[existing[0]]) { const b = { ...S.settings.budgets }; delete b[existing[0]]; S.settings = { ...S.settings, budgets: b }; }
+        close(); saveCats(type, cats(type).filter(([n]) => n !== existing[0])); catsSheet();
+        toast(`${existing[0]} eliminata`);
+      };
     };
   });
 }
@@ -2339,14 +2457,37 @@ function accountBalances() {
 }
 /* ---- interessi: conti che rendono, come Trade Republic o un conto deposito ----
    a.rate = interesse annuo lordo in %, a.tax = tasse in % (in Italia 26), a.autoInt = segnali da soli a inizio mese,
-   a.intFrom = primo mese ancora da accreditare. L'importo è il saldo del conto a fine mese × tasso / 12, al netto delle tasse. */
+   a.intFrom = momento da cui gli interessi non sono ancora stati accreditati (all'inizio: quando li hai attivati).
+   Come Trade Republic: ogni giorno matura saldo di fine giornata × tasso / 365; il 1° del mese arriva la somma
+   del mese prima, già tolte le tasse. Il primo mese conta solo dal giorno in cui li attivi. */
 const accBalanceAt = (id, ts) => Object.values(S.tx).reduce((s, t) => s + (t.account === id && t.ts < ts ? (t.type === "in" ? t.amount : -t.amount) : 0), 0);
 const monthlyInterest = (a, bal) => a.rate > 0 && bal > 0 ? Math.round(bal * a.rate / 100 / 12 * (1 - (a.tax ?? 26) / 100)) : 0;
+const dailyInterest = (a, bal) => a.rate > 0 && bal > 0 ? bal * a.rate / 100 / 365 * (1 - (a.tax ?? 26) / 100) : 0;
 const fmtRate = r => String(Math.round(r * 100) / 100).replace(".", ",") + "%";
 const monthStart = (y, m) => new Date(y, m, 1).getTime();
+// interest matured between `from` and `to` (ms), in cents after tax, not rounded
+function accruedInterest(a, from, to) {
+  if (!(a.rate > 0) || to <= from) return 0;
+  const txs = Object.values(S.tx).filter(t => t.account === a.id).sort((x, y) => x.ts - y.ts);
+  let bal = 0, i = 0, sum = 0;
+  const f = new Date(from); let day = new Date(f.getFullYear(), f.getMonth(), f.getDate()).getTime();
+  for (let guard = 0; day < to && guard < 800; guard++) {
+    const d = new Date(day), next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    while (i < txs.length && txs[i].ts < next) { bal += txs[i].type === "in" ? txs[i].amount : -txs[i].amount; i++; }   // end-of-day balance
+    const part = (Math.min(next, to) - Math.max(day, from)) / (next - day);   // first and last day only partly
+    if (bal > 0 && part > 0) sum += bal * a.rate / 100 / 365 * part;
+    day = next;
+  }
+  return sum * (1 - (a.tax ?? 26) / 100);
+}
+// matured so far this month and not yet credited (shown next to the account so you see it working from day one)
+function maturedNow(a) {
+  if (!(a.rate > 0) || !a.autoInt || !a.intFrom) return 0;
+  const n = new Date(); return Math.round(accruedInterest(a, Math.max(a.intFrom, monthStart(n.getFullYear(), n.getMonth())), n.getTime()));
+}
 let intRunning = false;
 async function runInterest() {
-  if (intRunning || !crypto.subtle) return; intRunning = true;
+  if (intRunning) return; intRunning = true;
   try {
     let added = 0, changed = false; const now = new Date(), list = accounts().map(a => ({ ...a }));
     for (const a of list) {
@@ -2355,7 +2496,7 @@ async function runInterest() {
       // one credit for each month that is over, dated the 1st of the following month
       while (monthStart(d.getFullYear(), d.getMonth() + 1) <= now.getTime() && guard++ < 24) {
         const at = monthStart(d.getFullYear(), d.getMonth() + 1), id = await occurrenceId(a.id + ":interessi", at);
-        const v = monthlyInterest(a, accBalanceAt(a.id, at));
+        const v = Math.round(accruedInterest(a, a.intFrom, at));
         if (v > 0 && !S.tx[id]) {
           const t = { id, type: "in", amount: v, cat: "Interessi", note: `Interessi ${a.name} · ${new Date(at - DAY).toLocaleDateString("it-IT", { month: "long" })}`, ts: at + 9 * 3600e3, account: a.id };
           S.tx[id] = t; enqueue({ op: "up", t: "transactions", row: pick(t, COLS.transactions) }); added++;
@@ -2373,7 +2514,7 @@ function accountsBlock() {
   if (!accs.length) return `<button class="acc-toggle" data-acc-manage>${ic("wallet", 16)}Dividi il saldo per conto: Hype, Revolut, contanti…</button>`;
   const { b, none } = accountBalances();
   return `<button class="acc-toggle" data-acc-toggle aria-expanded="${showAccounts}">${ic("wallet", 16)}${showAccounts ? "Nascondi i conti" : `Vedi per conto (${accs.length})`}<span class="chev${showAccounts ? " up" : ""}">${ic("chevD", 14)}</span></button>
-    ${showAccounts ? `<div class="acc-list">${accs.map(a => `<div class="acc-row"><i class="adot lg" style="background:${a.color}"></i><span>${esc(a.name)}${a.rate > 0 ? `<small class="acc-rate">${ic("percent", 12)}${esc(fmtRate(a.rate))} · circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese</small>` : ""}</span><b class="num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</b></div>`).join("")}
+    ${showAccounts ? `<div class="acc-list">${accs.map(a => `<div class="acc-row"><i class="adot lg" style="background:${a.color}"></i><span>${esc(a.name)}${a.rate > 0 ? `<small class="acc-rate">${ic("percent", 12)}${esc(fmtRate(a.rate))} · ${a.autoInt ? `${esc(money(Math.round(dailyInterest(a, b[a.id] || 0))))} al giorno · maturati ${esc(money(maturedNow(a)))} questo mese` : `circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese`}</small>` : ""}</span><b class="num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</b></div>`).join("")}
       ${none ? `<div class="acc-row muted"><i class="adot lg" style="background:var(--ink3)"></i><span>Senza conto</span><b class="num">${money(none)}</b></div>` : ""}
       <div class="acc-acts"><button class="link" data-transfer>${ic("transfer", 15)}Sposta tra conti</button><button class="link" data-acc-manage>Gestisci</button></div></div>` : ""}`;
 }
@@ -2383,7 +2524,7 @@ function accountsSheet() {
   sheet(`<div class="sheet-h"><span></span><h3>Conti</h3><button class="r" data-x>Fine</button></div>
     <p class="hint" style="margin:0 4px 12px">Dove tieni i soldi: conto in banca, Hype, Revolut, contanti… Ogni movimento può andare su un conto e vedi il totale di ognuno.</p>
     ${accs.length ? `<div class="list">${accs.map(a => `<button class="row" data-aedit="${esc(a.id)}"><span class="ico" style="background:${a.color}22;color:${a.color}">${ic("wallet", 20)}</span>
-      <span class="t"><b>${esc(a.name)}</b><small>${a.rate > 0 ? `${esc(fmtRate(a.rate))} annuo · circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese${a.autoInt ? ", segnati da soli" : ""}` : "Tocca per modificare"}</small></span><span class="a num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</span></button>`).join("")}</div>` : ""}
+      <span class="t"><b>${esc(a.name)}</b><small>${a.rate > 0 ? `${esc(fmtRate(a.rate))} annuo · ${a.autoInt ? `${esc(money(Math.round(dailyInterest(a, b[a.id] || 0))))} al giorno · maturati ${esc(money(maturedNow(a)))} questo mese, arrivano il 1°` : `circa ${esc(money(monthlyInterest(a, b[a.id] || 0)))} al mese`}` : "Tocca per modificare"}</small></span><span class="a num${(b[a.id] || 0) < 0 ? " neg" : ""}">${money(b[a.id] || 0)}</span></button>`).join("")}</div>` : ""}
     <button class="save" id="aAdd" style="margin-top:12px">Aggiungi conto</button>
     ${accs.length > 1 ? `<button class="save ghost" id="aMove">${"Sposta soldi tra conti"}</button>` : ""}
     ${accs.length && unassigned ? `<div class="group-h"><span>Movimenti senza conto</span><span class="num">${unassigned} · ${money(none)}</span></div>
@@ -2427,6 +2568,7 @@ function accountEditSheet(existing) {
       const r = num($("#aRate").value), tax = num($("#aTax").value), bal = existing ? accountBalances().b[existing.id] || 0 : parseAmt($("#aStart")?.value);
       $("#aRateHint").textContent = r > 0
         ? (bal > 0 ? `Con ${money(bal)} sul conto sono circa ${money(monthlyInterest({ rate: r, tax }, bal))} al mese, ${money(monthlyInterest({ rate: r, tax }, bal) * 12)} in un anno, già tolte le tasse.` : `Al ${fmtRate(r)} lordo, 1.000 € rendono circa ${money(monthlyInterest({ rate: r, tax }, 100000))} al mese dopo le tasse.`)
+          + (existing?.autoInt && existing.intFrom ? ` Questo mese ne hai già maturati ${money(maturedNow(existing))}.` : " Maturano ogni giorno sul saldo, da oggi, e il 1° del mese arrivano come entrata.")
         : "Per i conti che pagano interessi, come Trade Republic o un conto deposito. Il tasso lo trovi nell'app della banca.";
     };
     sh.addEventListener("input", e => { if (e.target.closest("#aRate,#aTax,#aStart")) hint(); });
@@ -2443,9 +2585,8 @@ function accountEditSheet(existing) {
       if (!name) { toast("Scrivi il nome del conto"); $("#aName").focus(); return; }
       const list = accounts().slice();
       const rate = Math.min(20, num($("#aRate").value)), tax = Math.min(100, num($("#aTax").value)), autoInt = $("#aAuto").checked;
-      const n0 = new Date(), thisMonth = monthStart(n0.getFullYear(), n0.getMonth());
-      // interest is credited from the month you turn it on (not for the past)
-      const intFrom = rate > 0 && autoInt ? (existing?.rate > 0 && existing?.autoInt && existing.intFrom ? existing.intFrom : thisMonth) : null;
+      // interest matures from the moment you turn it on (never for the past)
+      const intFrom = rate > 0 && autoInt ? (existing?.rate > 0 && existing?.autoInt && existing.intFrom ? existing.intFrom : Date.now()) : null;
       const extra = { rate: rate || null, tax, autoInt: rate > 0 ? autoInt : false, intFrom };
       if (existing) list[list.findIndex(a => a.id === existing.id)] = { ...existing, name, color, ...extra };
       else list.push({ id: uuid(), name, color, ...extra });
@@ -3121,6 +3262,7 @@ document.addEventListener("click", e => {
     else if (a === "siri") siriSheet();
     else if (a === "auto") autoSheet();
     else if (a === "accounts") accountsSheet();
+    else if (a === "cats") catsSheet();
     else if (a === "wage") wageSheet();
     else if (a === "sheetimport") pickFile("", importSheetFile);
     else if (a === "import") pickFile("", importBackup);
