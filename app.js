@@ -756,21 +756,37 @@ function movChips() {
   };
   const accs = accounts(), accList = movBase("acc");
   const accOpts = accs.map(a => ({ v: a.id, l: a.name, n: accList.filter(t => t.account === a.id).length })).filter(o => o.n || o.v === movAcc);
-  const catOpts = countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; }).map(c => ({ v: c.k, l: c.k, n: c.n }));
+  // every category of the chosen type is in the menu, also the ones with no movements yet (they go last, with 0)
+  const catCount = new Map(countBy(movBase("cat"), t => { const c = catInfo(t.type, t.cat)[0]; return [c, c]; }).map(c => [c.k, c.n]));
+  const catNames = [...new Set([...(movFilter === "in" ? [] : CATS.out), ...(movFilter === "out" ? [] : CATS.in)].map(c => c[0]).concat([...catCount.keys()], movCat ? [movCat] : []))];
+  const catOpts = catNames.map(c => ({ v: c, l: c, n: catCount.get(c) || 0 })).sort((a, b) => (b.n > 0) - (a.n > 0) || b.n - a.n || a.l.localeCompare(b.l));
   const noteOpts = countBy(movBase("note"), t => { const n = norm(t.note); return n ? [n, t.note.trim().replace(/\s+/g, " ")] : null; })
     .filter(x => x.n > 1 || x.k === movNote).map(x => ({ v: x.k, l: x.label, n: x.n }));
   const any = movAcc || movCat || movNote;
   return `<div class="fpills">${accs.length ? pill("acc", "Conto", movAcc, accOpts) : ""}${pill("cat", "Categoria", movCat, catOpts)}${noteOpts.length || movNote ? pill("note", "Nota", movNote, noteOpts) : ""}
     ${any ? `<button class="fclear" data-mclear aria-label="Togli i filtri">${ic("close", 14)}</button>` : ""}</div>`;
 }
+// The counter follows the Tutti / Entrate / Uscite choice: with Uscite you see only how many uscite and how much,
+// never a useless "Entrate 0,00 €". On the phone it is one line under the filters.
 function movSummary() {
   const l = movFiltered(), inn = l.reduce((a, t) => a + (t.type === "in" ? t.amount : 0), 0), out = l.reduce((a, t) => a + (t.type === "out" ? t.amount : 0), 0);
+  const n = l.length;
+  if (movFilter !== "all") {
+    const isIn = movFilter === "in", tot = isIn ? inn : out, word = isIn ? (n === 1 ? "entrata" : "entrate") : (n === 1 ? "uscita" : "uscite");
+    return `<div class="card mov-sum">
+      <div><span>${n} ${word}</span></div>
+      <div><span>Totale</span><b class="num ${isIn ? "pos" : ""}">${money(tot)}</b></div>
+      ${n > 1 ? `<div><span>In media</span><b class="num">${money(Math.round(tot / n))}</b></div>` : ""}
+    </div>
+    <p class="mov-count">${n} ${word} · <b class="num ${isIn ? "pos" : ""}">${isIn ? "+" : "−"}${money(tot)}</b></p>`;
+  }
   return `<div class="card mov-sum">
-    <div><span>${l.length === 1 ? "1 movimento" : l.length + " movimenti"}</span></div>
+    <div><span>${n === 1 ? "1 movimento" : n + " movimenti"}</span></div>
     <div><span>Entrate</span><b class="num pos">${money(inn)}</b></div>
     <div><span>Uscite</span><b class="num">${money(out)}</b></div>
     <div><span>Differenza</span><b class="num ${inn - out < 0 ? "neg" : ""}">${inn - out < 0 ? "−" : ""}${money(Math.abs(inn - out))}</b></div>
-  </div>`;
+  </div>
+  ${movAcc || movCat || movNote || movQuery.trim() ? `<p class="mov-count">${n === 1 ? "1 movimento" : n + " movimenti"}${inn ? ` · <b class="num pos">+${money(inn)}</b>` : ""}${out ? ` · <b class="num">−${money(out)}</b>` : ""}</p>` : ""}`;
 }
 function movList() {
   const q = movQuery.trim().toLowerCase();

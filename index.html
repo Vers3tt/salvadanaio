@@ -426,6 +426,8 @@ button.crow{width:100%;text-align:left}
 /* ===== sidebar elements (hidden on phone) ===== */
 .side-brand,.side-actions,.side-foot{display:none}
 .mov-sum{display:none}
+.mov-count{margin:-4px 4px 12px;color:var(--ink2);font-size:13.5px}
+.mov-count b{font-weight:600;color:var(--ink)} .mov-count b.pos{color:var(--green)}
 /* ===== home: widget spostabili ===== */
 .home-grid .col{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:30px;min-width:0}
 .w{position:relative;min-width:0;border-radius:20px}
@@ -597,6 +599,7 @@ button.crow{width:100%;text-align:left}
   .mov-side{position:sticky;top:24px;display:grid;gap:10px}
   .mov-side .search,.mov-side .seg{margin:0}
   .mov-sum{display:grid;padding:4px 0}
+  .mov-count{display:none}
   .mov-sum div{display:flex;justify-content:space-between;align-items:baseline;padding:10px 16px}
   .mov-sum div+div{border-top:1px solid var(--line)}
   .mov-sum div:first-child span{color:var(--ink);font-weight:600}
