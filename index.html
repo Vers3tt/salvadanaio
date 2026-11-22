@@ -256,7 +256,13 @@ a.row{color:inherit;text-decoration:none}
 .duerow{gap:12px}
 .duerow .dmain{display:flex;align-items:center;gap:12px;flex:1;min-width:0;text-align:left;min-height:62px}
 .duerow .t small.late{color:var(--neg)}
-.duerow .t small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.duerow .t small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.duerow .t small.dmeta{display:flex;align-items:center;gap:8px;min-width:0}
+.duerow .dmeta>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.duerow .dmeta .late{color:var(--neg)}
+.duerow .dmeta .dacc{display:inline-flex;align-items:center;min-width:0}
+.duerow .dmeta .dacc::before{content:"·";margin-right:8px;color:var(--ink3)}
+.duerow .dmeta .adot{flex:none}
 .duerow .dmain .a{align-self:center}
 /* Reminders-style circle: empty until tapped, then it fills and the check pops in */
 .duerow .darr{flex:none;width:26px;height:26px;margin:0 2px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1.8px var(--ink3);transition:box-shadow .18s,background .18s;position:relative}
@@ -654,7 +660,14 @@ button.crow{width:100%;text-align:left}
 .acc-acts .link{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink)}
 .accs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
 .accs-l{font-size:13px;color:var(--ink2);margin-right:2px}
-#dAccs .accs-l,#dCats .accs-l,#ddAccs .accs-l,#ddRest .accs-l{flex-basis:100%;margin:6px 4px 2px}
+#dAccs .accs-l,#dCats .accs-l,#ddAccs .accs-l,#ddRest .accs-l{flex-basis:100%;margin:8px 4px 2px}
+#dWhoChips{margin:8px 0 12px}
+#dCats,#dAccs,#ddAccs{margin:4px 0 8px}
+.achip .adot{margin-right:7px}
+.field input[type=date]{flex:1;min-width:0;text-align:right;font:inherit;color:var(--ink);background:none;border:0;-webkit-appearance:none;appearance:none;min-height:24px}
+.field input[type=date]::-webkit-date-and-time-value{text-align:right}
+.field input[type=date].empty{color:var(--ink3)}
+.field input[type=date]::-webkit-calendar-picker-indicator{opacity:.45;margin-left:6px}
 .achip .i{margin-right:5px}
 .achip{display:inline-flex;align-items:center;background:var(--card);border-radius:999px;padding:7px 12px;font-size:14px;font-weight:500;box-shadow:inset 0 0 0 1px var(--line)}
 .achip[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);box-shadow:none}

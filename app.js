@@ -1824,7 +1824,7 @@ function dueRow(d) {
   return `<div class="row duerow">
     <button class="darr ${d.dir === "out" ? "out" : "in"}" data-due-done="${esc(d.id)}" aria-label="${d.dir === "out" ? "Segna come pagato" : "Segna come arrivati"}: ${esc(dueTitle(d))}" title="${d.dir === "out" ? "Pagato" : "Arrivati"}">${ic("check", 16)}</button>
     <button class="dmain" data-due="${esc(d.id)}">
-      <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b><small class="${late ? "late" : ""}">${a ? `<i class="adot" style="background:${a.color}"></i>` : ""}${esc([dueWhen(d), d.who && d.note, a?.name].filter(Boolean).join(" · "))}</small></span>
+      <span class="t"><b>${esc(d.who || d.note || (d.dir === "out" ? "Da dare" : "Da ricevere"))}</b>${d.who && d.note ? `<small class="dnote">${esc(d.note)}</small>` : ""}<small class="dmeta"><span class="${late ? "late" : ""}">${esc(dueWhen(d))}</span>${a ? `<span class="dacc"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</span>` : ""}</small></span>
       <span class="a num ${d.dir === "out" ? "out" : "in"}">${d.dir === "out" ? "−" : "+"}${money(d.amount)}</span>
     </button>
   </div>`;
@@ -1857,8 +1857,8 @@ function dueSheet(existing, preset = {}) {
     </div>
     <div class="accs" id="dWhoChips">${whoChips.map(w => `<button class="achip" data-dwho="${esc(w)}">${esc(w)}</button>`).join("")}</div>
     <div class="fields">
-      <div class="field"><input id="dNote" placeholder="Per cosa (facoltativo): maglione, cena…" maxlength="60" value="${esc(existing?.note || preset.note || "")}"></div>
-      <div class="field"><label for="dDue">Quando arriva</label><input id="dDue" type="date" value="${dueVal}" style="text-align:right"></div>
+      <div class="field"><label for="dNote">Per cosa</label><input id="dNote" placeholder="maglione, cena… (facoltativo)" maxlength="60" value="${esc(existing?.note || preset.note || "")}" style="text-align:right"></div>
+      <div class="field"><label for="dDue" id="dDueL">Quando arriva</label><input id="dDue" type="date" class="${dueVal ? "" : "empty"}" value="${dueVal}"></div>
     </div>
     <div class="accs" id="dCats"></div>
     <div class="accs" id="dAccs"></div>
@@ -1867,6 +1867,7 @@ function dueSheet(existing, preset = {}) {
     const draw = () => {
       sh.querySelectorAll("[data-d]").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === dir));
       $("#dWhoL").textContent = dir === "out" ? "A chi" : "Da chi";
+      $("#dDueL").textContent = dir === "out" ? "Entro quando" : "Quando arriva";
       const accs = accounts();
       $("#dAccs").innerHTML = accs.length ? `<span class="accs-l">${dir === "out" ? "Da quale conto" : "Dove arriveranno"}</span>` + accs.map(a => `<button class="achip" data-dacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
       const type = dir === "out" ? "out" : "in";
@@ -1877,6 +1878,7 @@ function dueSheet(existing, preset = {}) {
       $("#dHint").textContent = dir === "out" ? "Quando li hai dati tocca il cerchio e diventa un'uscita." : "Finché non tocchi il cerchio non conta nel saldo. Poi diventa un'entrata sul conto che scegli qui.";
     };
     sh.querySelector("[data-x]").onclick = close;
+    $("#dDue").addEventListener("input", e => e.target.classList.toggle("empty", !e.target.value));
     sh.addEventListener("click", e => {
       const d = e.target.closest("[data-d]"); if (d) { dir = d.dataset.d; draw(); }
       const a = e.target.closest("[data-dacc]"); if (a) { acc = acc === a.dataset.dacc ? "" : a.dataset.dacc; draw(); }
