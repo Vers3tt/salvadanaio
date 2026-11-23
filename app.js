@@ -527,7 +527,7 @@ function homeScreen() {
   ${iconNotice()}
   ${checkNotice()}
   ${homeGrid(W)}
-  ${editHome ? `<button class="save small hl-done-float" data-hl-done>Fine</button>` : `<button class="hl-open" data-hl-edit>${ic("layout", 16)}Personalizza la Home</button>`}`;
+  ${editHome ? `<button class="save small hl-done-float" data-hl-done>Fine</button>` : ""}`;
 }
 
 /* daily balance for the chosen range, oldest first */
@@ -856,7 +856,7 @@ function goalCard(g) {
 }
 function goalsScreen() {
   return `
-  <header class="nav"><div><h1>Obiettivi</h1></div><div class="nav-r">${mascot()}<button class="nav-btn" data-goal-new aria-label="Nuovo obiettivo">${ic("plus", 20)}</button></div></header>
+  <header class="nav"><div><h1>Obiettivi</h1></div><div class="nav-r">${mascot()}</div></header>
   ${D.active.length ? `<div class="goal-grid">${D.active.map(goalCard).join("")}<button class="gcard gadd" data-goal-new>${ic("plus", 24)}<span>Nuovo obiettivo</span></button></div>
     <p class="hint">${allocated() ? `Ogni obiettivo usa i soldi liberi del saldo (${money(freeBalance())}) più quelli che hai messo da parte apposta per lui.` : `Ogni obiettivo si confronta con tutto il saldo (${money(D.total)}).`} Quando ne compri uno il saldo scende e gli altri si aggiornano.</p>`
   : emptyCard("flag", "Nessun obiettivo", "Scrivi cosa vuoi comprare e quanto costa. Tutto il saldo lo fa avanzare.", `<button class="save small" data-goal-new>Nuovo obiettivo</button>`)}
@@ -2143,7 +2143,7 @@ const TOUR = [
   { sel: ".actions", tab: "home", t: "Una spesa? Due tocchi", d: "Tocca Uscita o Entrata, scrivi l'importo e scegli la categoria. Dallo stesso pannello puoi fotografare lo scontrino." },
   { sel: '[data-w="dues"]', tab: "home", t: "Soldi in arrivo", d: "Una vendita su Vinted, un amico che ti deve la cena: li segni qui e non contano nel saldo. Quando arrivano tocchi il cerchio accanto." },
   { sel: '[data-w="cats"]', tab: "home", t: "Dove vanno i soldi", d: "Le spese del mese divise per categoria. Tocca una riga per darti un budget: Keepo ti avvisa prima di sforarlo." },
-  { sel: '.brandnav [data-hl-edit]', tab: "home", t: "La Home la decidi tu", d: "Tocca qui (o Personalizza la Home, in fondo alla pagina) per spostare i riquadri, nascondere quelli che non usi o scegliere una disposizione pronta." },
+  { sel: '.brandnav [data-hl-edit]', tab: "home", t: "La Home la decidi tu", d: "Tocca qui per spostare i riquadri, nascondere quelli che non usi o scegliere una disposizione pronta." },
   { sel: '.tabbar [data-tab="mov"]', t: "Tutti i movimenti", d: "Li cerchi per nota o negozio e li filtri per conto e categoria con i menu sotto la ricerca." },
   { sel: '.tabbar [data-tab="goals"]', t: "Cosa vuoi comprarti?", d: "Aggiungi un obiettivo con nome e prezzo, anche incollando il link del prodotto. Tutto il saldo lo fa avanzare." },
   { sel: '.tabbar [data-tab="more"]', t: "Siri, Watch e il resto", d: "In Altro ci sono conti, budget, i Comandi Rapidi per Siri e il Centro di Controllo. E questa guida, se vuoi rivederla." }
