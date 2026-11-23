@@ -558,12 +558,21 @@ function projectionEvents() {
   for (const r of Object.values(S.rec)) {
     if (!r.active) continue;
     let t = r.next_ts, g = 0;
-    while (t <= end && g++ < 40) { if (t > now - DAY) ev.push({ t: Math.max(t, now), v: r.type === "in" ? r.amount : -r.amount }); t = advance(t, r.freq); }
+    while (t <= end && g++ < 40) { if (t > now - DAY) ev.push({ t: Math.max(t, now), v: r.type === "in" ? r.amount : -r.amount, k: "rec" }); t = advance(t, r.freq); }
   }
   const nx = new Date(); const firstNext = monthStart(nx.getFullYear(), nx.getMonth() + 1);
-  if (firstNext <= end) { const { b } = accountBalances(); for (const a of accounts()) if (a.rate > 0 && a.autoInt) { const v = monthlyInterest(a, b[a.id] || 0); if (v) ev.push({ t: firstNext, v }); } }
-  for (const d of dues()) if (d.due && d.due <= end) ev.push({ t: Math.max(d.due, now), v: d.dir === "out" ? -d.amount : d.amount });
+  if (firstNext <= end) { const { b } = accountBalances(); for (const a of accounts()) if (a.rate > 0 && a.autoInt) { const v = monthlyInterest(a, b[a.id] || 0); if (v) ev.push({ t: firstNext, v, k: "int" }); } }
+  // money to receive / give: the ones with no date count as "soon", like the "in arrivo" line under the balance
+  for (const d of dues()) if (!d.due || d.due <= end) ev.push({ t: d.due ? Math.max(d.due, now) : now, v: d.dir === "out" ? -d.amount : d.amount, k: d.dir === "out" ? "dout" : "din" });
   return ev;
+}
+// what the 30-day number is made of, so it never looks like a mystery
+function projParts(now, ev) {
+  const sum = k => ev.filter(e => e.k === k).reduce((a, e) => a + e.v, 0);
+  const sign = v => (v < 0 ? "−" : "+") + money(Math.abs(v));
+  const parts = [["Saldo di oggi", money(now)]];
+  for (const [k, l] of [["din", "da ricevere"], ["dout", "da dare"], ["rec", "ricorrenti"], ["int", "interessi del 1°"]]) { const v = sum(k); if (v) parts.push([l, sign(v)]); }
+  return `<p class="bproj-parts">${parts.map(([l, v]) => `<span>${esc(l)} <b class="num">${esc(v)}</b></span>`).join("")}</p>`;
 }
 function balanceChart() {
   if (D.txs.length < 2) return "";
@@ -607,7 +616,7 @@ function balanceChart() {
       <div class="btip" hidden></div>
     </div>
     <div class="bchart-x"><span>${esc(fmtDate(pts[0].t, { day: "numeric", month: "short" }))}</span>${fut ? `<span class="bx-today" style="left:${pct(today)}%">oggi</span><span>${esc(fmtDate(lastF.t, { day: "numeric", month: "short" }))}</span>` : "<span>oggi</span>"}</div>
-    ${fut ? `<p class="bproj">${ic("clock", 13)}<span>Fra 30 giorni (ricorrenti e soldi in arrivo compresi)</span><b class="num ${lastF.v < 0 ? "neg" : ""}">${money(lastF.v)}</b></p>` : ""}
+    ${fut ? `<p class="bproj">${ic("clock", 13)}<span>Fra 30 giorni</span><b class="num ${lastF.v < 0 ? "neg" : ""}">${money(lastF.v)}</b></p>${projParts(past[today].v, ev)}` : ""}
   </div>`;
 }
 function chartHover(el, clientX) {
