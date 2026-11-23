@@ -1821,8 +1821,21 @@ const dueTitle = d => d.who && d.note ? `${d.who} · ${d.note}` : d.who || d.not
 function dueWhen(d) {
   const day0 = new Date(); day0.setHours(0, 0, 0, 0);
   if (d.due) {
-    const days = Math.round((new Date(d.due).setHours(0, 0, 0, 0) - day0) / DAY);
-    return days < 0 ? `in ritardo di ${-days === 1 ? "un giorno" : -days + " giorni"}` : days === 0 ? "atteso oggi" : days === 1 ? "atteso domani" : `atteso ${fmtDate(d.due, { day: "numeric", month: "short" })}`;
+    const dayDiff = t => Math.round((new Date(t).setHours(0, 0, 0, 0) - day0) / DAY);
+    const days = dayDiff(d.due), short = t => fmtDate(t, { day: "numeric", month: "short" });
+    if (days < 0) return `in ritardo di ${-days === 1 ? "un giorno" : -days + " giorni"}`;
+    const rel = n => n === 0 ? "oggi" : n === 1 ? "domani" : null;
+    // "entro il": any day up to the deadline
+    if (d.dueKind === "by") return `entro ${rel(days) || "il " + short(d.due)}`;
+    // a range of days: before it starts show both ends, once inside only the last day
+    if (d.dueKind === "range" && d.dueFrom) {
+      if (dayDiff(d.dueFrom) > 0) {
+        const a = new Date(d.dueFrom), b = new Date(d.due);
+        return a.getMonth() === b.getMonth() ? `tra il ${a.getDate()} e il ${short(d.due)}` : `tra il ${short(d.dueFrom)} e il ${short(d.due)}`;
+      }
+      return `in arrivo, entro ${rel(days) || "il " + short(d.due)}`;
+    }
+    return rel(days) ? "atteso " + rel(days) : `atteso ${short(d.due)}`;
   }
   const ago = Math.floor((day0 - new Date(d.created_at).setHours(0, 0, 0, 0)) / DAY);
   return ago <= 0 ? "segnato oggi" : ago === 1 ? "da ieri" : `da ${ago} giorni`;
@@ -1857,7 +1870,9 @@ function dueSheet(existing, preset = {}) {
   let dir = existing?.dir || preset.dir || "in", acc = existing ? existing.account || "" : preset.account ?? lastAccount(), cat = existing?.cat || "";
   const pastWho = [...new Map(dues().concat(S.settings.duesWho || []).map(d => [norm(d.who), (d.who || "").trim()])).values()].filter(Boolean);
   const whoChips = [...new Set(["Vinted", "Subito", ...pastWho])].slice(0, 8);
-  const dueVal = existing?.due ? new Date(existing.due).toISOString().slice(0, 10) : "";
+  const ymd = t => { const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+  const dueVal = existing?.due ? ymd(existing.due) : "", fromVal = existing?.dueFrom ? ymd(existing.dueFrom) : "";
+  let kind = existing?.dueKind || "on";
   sheet(`<div class="sheet-h"><button class="l" data-x>Annulla</button><h3>${existing ? "Modifica" : "Nuovo"}</h3><button class="r" id="dGo">Salva</button></div>
     <div class="seg" role="group"><button data-d="in">Da ricevere</button><button data-d="out">Da dare</button></div>
     <div class="fields">
@@ -1867,7 +1882,12 @@ function dueSheet(existing, preset = {}) {
     <div class="accs" id="dWhoChips">${whoChips.map(w => `<button class="achip" data-dwho="${esc(w)}">${esc(w)}</button>`).join("")}</div>
     <div class="fields">
       <div class="field"><label for="dNote">Per cosa</label><input id="dNote" placeholder="maglione, cena… (facoltativo)" maxlength="60" value="${esc(existing?.note || preset.note || "")}" style="text-align:right"></div>
-      <div class="field"><label for="dDue" id="dDueL">Quando arriva</label><input id="dDue" type="date" class="${dueVal ? "" : "empty"}" value="${dueVal}"></div>
+    </div>
+    <span class="accs-l dk-l" id="dKindL">Quando arrivano (facoltativo)</span>
+    <div class="seg seg-sm" role="group" id="dKind"><button data-dk="on">Il giorno</button><button data-dk="by">Entro il</button><button data-dk="range">Tra due date</button></div>
+    <div class="fields">
+      <div class="field" id="dFromF"><label for="dFrom">Dal</label><input id="dFrom" type="date" class="${fromVal ? "" : "empty"}" value="${fromVal}"></div>
+      <div class="field"><label for="dDue" id="dDueL">Giorno</label><input id="dDue" type="date" class="${dueVal ? "" : "empty"}" value="${dueVal}"></div>
     </div>
     <div class="accs" id="dCats"></div>
     <div class="accs" id="dAccs"></div>
@@ -1876,7 +1896,10 @@ function dueSheet(existing, preset = {}) {
     const draw = () => {
       sh.querySelectorAll("[data-d]").forEach(b => b.setAttribute("aria-pressed", b.dataset.d === dir));
       $("#dWhoL").textContent = dir === "out" ? "A chi" : "Da chi";
-      $("#dDueL").textContent = dir === "out" ? "Entro quando" : "Quando arriva";
+      $("#dKindL").textContent = (dir === "out" ? "Quando li dai" : "Quando arrivano") + " (facoltativo)";
+      sh.querySelectorAll("[data-dk]").forEach(b => b.setAttribute("aria-pressed", b.dataset.dk === kind));
+      $("#dFromF").hidden = kind !== "range";
+      $("#dDueL").textContent = kind === "range" ? "Al" : kind === "by" ? "Entro il" : "Giorno";
       const accs = accounts();
       $("#dAccs").innerHTML = accs.length ? `<span class="accs-l">${dir === "out" ? "Da quale conto" : "Dove arriveranno"}</span>` + accs.map(a => `<button class="achip" data-dacc="${esc(a.id)}" aria-pressed="${acc === a.id}"><i class="adot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join("") : "";
       const type = dir === "out" ? "out" : "in";
@@ -1887,9 +1910,10 @@ function dueSheet(existing, preset = {}) {
       $("#dHint").textContent = dir === "out" ? "Quando li hai dati tocca il cerchio e diventa un'uscita." : "Finché non tocchi il cerchio non conta nel saldo. Poi diventa un'entrata sul conto che scegli qui.";
     };
     sh.querySelector("[data-x]").onclick = close;
-    $("#dDue").addEventListener("input", e => e.target.classList.toggle("empty", !e.target.value));
+    ["#dDue", "#dFrom"].forEach(id => $(id).addEventListener("input", e => e.target.classList.toggle("empty", !e.target.value)));
     sh.addEventListener("click", e => {
       const d = e.target.closest("[data-d]"); if (d) { dir = d.dataset.d; draw(); }
+      const k = e.target.closest("[data-dk]"); if (k) { kind = k.dataset.dk; draw(); }
       const a = e.target.closest("[data-dacc]"); if (a) { acc = acc === a.dataset.dacc ? "" : a.dataset.dacc; draw(); }
       const c = e.target.closest("[data-dcat]"); if (c) { cat = cat === c.dataset.dcat ? "" : c.dataset.dcat; draw(); }
       const w = e.target.closest("[data-dwho]"); if (w) { $("#dWho").value = w.dataset.dwho; $("#dNote").focus(); }
@@ -1897,9 +1921,14 @@ function dueSheet(existing, preset = {}) {
     $("#dGo").onclick = () => {
       const amount = parseAmt($("#dAmt").value);
       if (!amount) { toast("Scrivi l'importo"); $("#dAmt").focus(); return; }
-      const dv = $("#dDue").value, due = dv ? (([y, m, dd]) => new Date(y, m - 1, dd, 12).getTime())(dv.split("-").map(Number)) : null;
+      const at = v => v ? (([y, m, dd]) => new Date(y, m - 1, dd, 12).getTime())(v.split("-").map(Number)) : null;
+      let due = at($("#dDue").value), dueFrom = kind === "range" ? at($("#dFrom").value) : null;
+      if (kind === "range" && !due && dueFrom) { toast("Scegli anche l'ultimo giorno"); $("#dDue").focus(); return; }
+      if (dueFrom && due && dueFrom > due) [dueFrom, due] = [due, dueFrom];
+      if (kind === "range" && dueFrom === due) dueFrom = null;
+      const dueKind = !due ? null : kind === "range" && !dueFrom ? "on" : kind;
       const who = $("#dWho").value.trim().replace(/\s+/g, " ");
-      const item = { id: existing?.id || uuid(), dir, amount, who, note: $("#dNote").value.trim(), account: acc || null, cat: cat || null, due, tx: existing?.tx || preset.tx || null, created_at: existing?.created_at || Date.now() };
+      const item = { id: existing?.id || uuid(), dir, amount, who, note: $("#dNote").value.trim(), account: acc || null, cat: cat || null, due, dueKind, dueFrom: dueKind === "range" ? dueFrom : null, tx: existing?.tx || preset.tx || null, created_at: existing?.created_at || Date.now() };
       close(); putDue(item);
       toast(existing ? "Aggiornato" : dir === "out" ? `Da dare ${money(amount)}${who ? " a " + who : ""}` : `In arrivo ${money(amount)}${who ? " da " + who : ""}`, existing ? null : () => delDue(item.id));
     };
